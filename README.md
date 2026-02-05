@@ -2,6 +2,9 @@
 
 A production-ready, scalable payment processing microservice built with NestJS and Clean Architecture principles. This service provides a unified interface for handling payments and subscriptions across multiple payment providers while maintaining flexibility, maintainability, and extensibility.
 
+[![CI](https://github.com/your-username/auth-template/workflows/Test/badge.svg)](https://github.com/your-username/auth-template/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ## 📋 Overview
 
 The Payment Microservice is a reusable, provider-agnostic solution designed to handle complex payment workflows in modern distributed systems. It abstracts the complexity of integrating multiple payment providers behind a clean, consistent API while providing robust event-driven communication with other services in your ecosystem.
@@ -68,19 +71,19 @@ Whether you're building a SaaS platform, e-commerce application, or marketplace,
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Payment Microservice                         │
-│                                                                   │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
-│  │ Presentation │──────│   Application │──────│    Domain    │  │
-│  │    Layer     │      │     Layer     │      │     Layer    │  │
-│  └──────────────┘      └──────────────┘      └──────────────┘  │
-│         │                      │                      │          │
-│         └──────────────────────┴──────────────────────┘          │
-│                              │                                   │
-│                    ┌──────────────────┐                          │
-│                    │ Infrastructure   │                          │
-│                    │     Layer        │                          │
-│                    └──────────────────┘                          │
+│                     Payment Microservice                        │
+│                                                                 │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐   │
+│  │ Presentation │──────│  Application │──────│    Domain    │   │
+│  │    Layer     │      │    Layer     │      │     Layer    │   │
+│  └──────────────┘      └──────────────┘      └──────────────┘   │
+│         │                      │                      │         │
+│         └──────────────────────┴──────────────────────┘         │
+│                                │                                │
+│                      ┌──────────────────┐                       │
+│                      │ Infrastructure   │                       │
+│                      │     Layer        │                       │
+│                      └──────────────────┘                       │
 └─────────────────────────────────────────────────────────────────┘
          │                    │                    │
          ▼                    ▼                    ▼
@@ -112,7 +115,7 @@ Whether you're building a SaaS platform, e-commerce application, or marketplace,
 - Request validation and transformation
 - Authentication guards
 
-For detailed architecture documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md)
+For detailed architecture documentation, see [ARCHITECTURE.md](./docs/documentation/ARCHITECTURE.md)
 
 ---
 
@@ -129,8 +132,8 @@ For detailed architecture documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/your-org/payment-microservice.git
-cd payment-microservice
+git clone https://github.com/a7medsa22/payment-gateway.git
+cd payment-gateway
 ```
 
 2. **Install dependencies**
@@ -183,9 +186,9 @@ docker-compose down
 
 ## 📚 Documentation
 
-- **[Architecture Documentation](./ARCHITECTURE.md)** - Detailed architecture and design decisions
-- **[API Reference](./API.md)** - Complete API documentation with examples
-- **[Database Schema](./DATABASE.md)** - Database design and relationships
+- **[Architecture Documentation](./docs/documentation/ARCHITECTURE.md)** - Detailed architecture and design decisions
+- **[API Reference](./docs/API.md)** - Complete API documentation with examples
+- **[Database Schema](./docs/details/DATABASE.md)** - Database design and relationships
 - **[Event System](./EVENTS.md)** - Event-driven architecture and message formats
 - **[Provider Integration Guide](./PROVIDERS.md)** - Adding new payment providers
 - **[Deployment Guide](./DEPLOYMENT.md)** - Production deployment instructions
@@ -248,7 +251,7 @@ curl -X POST https://api.yourdomain.com/api/v1/payments \
     "metadata": {
       "orderId": "order-456"
     }
-  }'
+  '
 ```
 
 Response:
@@ -512,9 +515,9 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 ## 🆘 Support
 
 - **Documentation**: [Full documentation](./docs)
-- **Issues**: [GitHub Issues](https://github.com/your-org/payment-microservice/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/payment-microservice/discussions)
-- **Email**: support@yourdomain.com
+- **Issues**: [GitHub Issues](https://github.com/a7medsa22/payment-gateway/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/payment-gateway/discussions)
+- **Email**: ahmedsalahsotohy@gmail.com
 
 ---
 
@@ -545,10 +548,16 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## 🙏 Acknowledgments
 
-- NestJS team for the excellent framework
 - Stripe and Paymob for comprehensive payment APIs
+- Clean Architecture by Robert C. Martin
+- Domain-Driven Design by Eric Evans
+- NestJS team for the excellent framework
 - The open-source community for inspiration and tools
 
 ---
 
 **Built with ❤️ using NestJS and Clean Architecture**
+
+**⭐ If this project helped you, please give it a star!**
+
+**📢 Share with your team and help others build better authentication systems!**
