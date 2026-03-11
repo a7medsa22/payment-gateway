@@ -2,9 +2,6 @@
 
 A production-ready, scalable payment processing microservice built with NestJS and Clean Architecture principles. This service provides a unified interface for handling payments and subscriptions across multiple payment providers while maintaining flexibility, maintainability, and extensibility.
 
-[![CI](https://github.com/your-username/auth-template/workflows/Test/badge.svg)](https://github.com/your-username/auth-template/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 ## 📋 Overview
 
 The Payment Microservice is a reusable, provider-agnostic solution designed to handle complex payment workflows in modern distributed systems. It abstracts the complexity of integrating multiple payment providers behind a clean, consistent API while providing robust event-driven communication with other services in your ecosystem.
@@ -67,55 +64,79 @@ Whether you're building a SaaS platform, e-commerce application, or marketplace,
 
 ## 🏗️ Architecture
 
-### High-Level Overview
+### High-Level Overview - Enterprise Grade ✨
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Payment Microservice                        │
+│            Payment Microservice (DDD + Clean Architecture)      │
 │                                                                 │
 │  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐   │
 │  │ Presentation │──────│  Application │──────│    Domain    │   │
-│  │    Layer     │      │    Layer     │      │     Layer    │   │
+│  │   (API)      │      │  (Use Cases) │      │  (Aggregates)│   │
 │  └──────────────┘      └──────────────┘      └──────────────┘   │
 │         │                      │                      │         │
-│         └──────────────────────┴──────────────────────┘         │
-│                                │                                │
-│                      ┌──────────────────┐                       │
-│                      │ Infrastructure   │                       │
-│                      │     Layer        │                       │
-│                      └──────────────────┘                       │
+│    Controllers           Unit of Work          Aggregate Roots  │
+│    Guards                Commands/Queries      Domain Service   │
+│    Interceptors            DTOs                Value Objects    │
+│                              │                 Domain Events    │
+│                    ┌──────────────────┐                         │
+│                    │ Infrastructure   │                         │
+│                    │  (Adapters)      │                         │
+│                    └──────────────────┘                         │
+│                          Repositories                           │
+│                          Event Publisher                        │
+│                          Provider Adapters                      │
 └─────────────────────────────────────────────────────────────────┘
          │                    │                    │
          ▼                    ▼                    ▼
     RabbitMQ            PostgreSQL          Payment Providers
-  (Event Bus)         (Data Store)        (Stripe, Paymob)
+  (Events)            (Unit of Work)      (Circuit Breaker)
 ```
 
-### Clean Architecture Layers
+### Enterprise Patterns Implemented ⭐
 
-**Domain Layer** - Core business logic and entities
-- Payment, Subscription, Transaction entities
-- Business rules and invariants
-- Domain events and value objects
+**Domain Layer** - Pure business logic (NO infrastructure dependencies)
+- ✅ **Aggregate Roots**: Payment (contains Transactions)
+- ✅ **Value Objects**: Money (Decimal.js for precision)
+- ✅ **Domain Events**: Automatic event collection
+- ✅ **Domain Services**: Provider selection, validation
+- ✅ **Specifications**: Business rule encapsulation
 
-**Application Layer** - Use cases and orchestration
-- CreatePayment, VerifyPayment, RefundPayment use cases
-- Subscription management use cases
-- DTOs and application services
+**Application Layer** - Use case orchestration (NO domain logic)
+- ✅ **Commands**: CQRS pattern
+- ✅ **Unit of Work**: Transaction management
+- ✅ **Idempotency**: Duplicate prevention
+- ✅ **Event Publishing**: Atomic with database commits
 
-**Infrastructure Layer** - External integrations
-- Payment provider adapters (Stripe, Paymob)
-- Database repositories (PostgreSQL)
-- Message publishing (RabbitMQ)
-- External API clients
+**Infrastructure Layer** - External adapters
+- ✅ **Repositories**: With optimistic locking
+- ✅ **Provider Adapters**: Anti-corruption layer
+- ✅ **Event Publisher**: Domain event to message broker
+- ✅ **Circuit Breaker**: Provider fault tolerance
 
-**Presentation Layer** - API and interfaces
-- REST API controllers
-- Webhook endpoints
-- Request validation and transformation
-- Authentication guards
+**Presentation Layer** - HTTP/gRPC interfaces
+- ✅ **Controllers**: Thin API layer
+- ✅ **Authentication**: JWT with guards
+- ✅ **Validation**: Input sanitization
+- ✅ **Exception Filters**: Consistent error responses
 
-For detailed architecture documentation, see [ARCHITECTURE.md](./docs/documentation/ARCHITECTURE.md)
+### Key Improvements Over Basic Implementation
+
+🔥 **Financial Safety**
+- Money calculations use Decimal.js (no floating-point errors)
+- All transactions are atomic (Unit of Work pattern)
+
+🔥 **Data Consistency**
+- Aggregate pattern ensures invariants
+- Optimistic locking prevents race conditions
+- Events auto-published with database commits
+
+🔥 **Operational Excellence**
+- Idempotency prevents duplicate charges
+- Correlation IDs for distributed tracing
+- Circuit breakers prevent cascading failures
+
+For detailed architecture documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ---
 
@@ -138,7 +159,7 @@ cd payment-gateway
 
 2. **Install dependencies**
 ```bash
-pnpm install
+npm install
 ```
 
 3. **Configure environment variables**
@@ -154,17 +175,17 @@ docker-compose up -d postgres rabbitmq
 
 5. **Run database migrations**
 ```bash
-pnpm run migration:run
+npm run migration:run
 ```
 
 6. **Start the service**
 ```bash
 # Development mode
-pnpm run start:dev
+npm run start:dev
 
 # Production mode
-pnpm run build
-pnpm run start:prod
+npm run build
+npm run start:prod
 ```
 
 The service will be available at `http://localhost:3000`
@@ -188,14 +209,14 @@ docker-compose down
 
 - **[Architecture Documentation](./docs/documentation/ARCHITECTURE.md)** - Detailed architecture and design decisions
 - **[API Reference](./docs/API.md)** - Complete API documentation with examples
-- **[Database Schema](./docs/details/DATABASE.md)** - Database design and relationships
-- **[Event System](./EVENTS.md)** - Event-driven architecture and message formats
-- **[Provider Integration Guide](./PROVIDERS.md)** - Adding new payment providers
-- **[Deployment Guide](./DEPLOYMENT.md)** - Production deployment instructions
-- **[Development Guide](./DEVELOPMENT.md)** - Development setup and guidelines
-- **[Security Guide](./SECURITY.md)** - Security best practices and compliance
+- **[Database Schema](./docs/DATABASE.md)** - Database design and relationships
+- **[Event System](./docs/EVENTS.md)** - Event-driven architecture and message formats
+- **[Provider Integration Guide](./docs/PROVIDERS.md)** - Adding new payment providers
+- **[Deployment Guide](./docs/DEPLOYMENT.md)** - Production deployment instructions
+- **[Development Guide](./docs/DEVELOPMENT.md)** - Development setup and guidelines
+- **[Security Guide](./docs/SECURITY.md)** - Security best practices and compliance
 - **[Testing Guide](./TESTING.md)** - Testing strategies and examples
-- **[Troubleshooting](./TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Troubleshooting](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
 ---
 
@@ -269,7 +290,7 @@ Response:
 }
 ```
 
-For complete API documentation, see [API.md](./API.md)
+For complete API documentation, see [API.md](./docs/API.md)
 
 ---
 
@@ -309,7 +330,7 @@ The service publishes events to RabbitMQ for asynchronous processing:
 }
 ```
 
-For detailed event documentation, see [EVENTS.md](./EVENTS.md)
+For detailed event documentation, see [EVENTS.md](./docs/EVENTS.md)
 
 ---
 
@@ -364,19 +385,19 @@ ENABLE_TRACING=true
 
 ```bash
 # Unit tests
-pnpm run test
+npm run test
 
 # Integration tests
-pnpm run test:integration
+npm run test:integration
 
 # E2E tests
-pnpm run test:e2e
+npm run test:e2e
 
 # Test coverage
-pnpm run test:cov
+npm run test:cov
 
 # Specific test file
-pnpm run test -- payment.service.spec.ts
+npm run test -- payment.service.spec.ts
 ```
 
 ### Test Coverage Goals
@@ -385,7 +406,7 @@ pnpm run test -- payment.service.spec.ts
 - Integration Tests: Critical paths covered
 - E2E Tests: All API endpoints tested
 
-For detailed testing guide, see [TESTING.md](./TESTING.md)
+For detailed testing guide, see [TESTING.md](./docs/TESTING.md)
 
 ---
 
@@ -486,7 +507,7 @@ Recommended alerts:
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guide](./docs/CONTRIBUTING.md) for details.
 
 ### Development Workflow
 
@@ -516,7 +537,7 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 - **Documentation**: [Full documentation](./docs)
 - **Issues**: [GitHub Issues](https://github.com/a7medsa22/payment-gateway/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/payment-gateway/discussions)
+- **Discussions**: [GitHub Discussions](https://github.com/a7medsa22/payment-gateway/discussions)
 - **Email**: ahmedsalahsotohy@gmail.com
 
 ---
@@ -548,16 +569,10 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## 🙏 Acknowledgments
 
-- Stripe and Paymob for comprehensive payment APIs
-- Clean Architecture by Robert C. Martin
-- Domain-Driven Design by Eric Evans
 - NestJS team for the excellent framework
+- Stripe and Paymob for comprehensive payment APIs
 - The open-source community for inspiration and tools
 
 ---
 
 **Built with ❤️ using NestJS and Clean Architecture**
-
-**⭐ If this project helped you, please give it a star!**
-
-**📢 Share with your team and help others build better authentication systems!**
