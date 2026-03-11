@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payment_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - postgres
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: payment_db
+      PAYMENT_DEFAULT_PROVIDER: stripe
+      STRIPE_ENABLED: "true"
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: ""
+      PAYMOB_ENABLED: "false"
+      PAYMOB_API_KEY: ""
+      PAYMOB_INTEGRATION_ID: ""
+      PAYMOB_IFRAME_ID: ""
+      PAYMOB_HMAC_SECRET: ""
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
