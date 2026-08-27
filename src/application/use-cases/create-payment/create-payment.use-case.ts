@@ -1,7 +1,7 @@
 import { CreatePaymentInput } from "@application/use-cases/create-payment/create-payment.input";
 import { PaymentRepository } from "@application/repositories/payment.repository";
 import { Money } from "@domain/value-objects/money.vo";
-import { Currency } from "@shared/constants/payment.constants";
+import { Currency, PaymentProvider } from "@shared/constants/payment.constants";
 import { Payment } from "@domain/aggregates/payment.aggregate";
 
 export class CreatePaymentUseCase {
@@ -18,7 +18,7 @@ export class CreatePaymentUseCase {
             id,
             userId: input.userId,
             amount: money,
-            provider: input.provider,
+            provider: input.provider as PaymentProvider,
         })
         //5-Start procces of payment
         payment.start();
