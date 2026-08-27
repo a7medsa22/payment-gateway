@@ -25,23 +25,6 @@ export enum PaymentProvider {
   PAYMOB = 'paymob',
 }
 
-export enum SubscriptionStatus {
-  ACTIVE = 'active',
-  PAST_DUE = 'past_due',
-  CANCELLED = 'cancelled',
-  EXPIRED = 'expired',
-  TRIALING = 'trialing',
-  INCOMPLETE = 'incomplete',
-}
-
-export enum BillingInterval {
-  DAILY = 'daily',
-  WEEKLY = 'weekly',
-  MONTHLY = 'monthly',
-  QUARTERLY = 'quarterly',
-  YEARLY = 'yearly',
-}
-
 export enum TransactionType {
   CHARGE = 'charge',
   REFUND = 'refund',
@@ -84,11 +67,6 @@ export const ROUTING_KEYS = {
   PAYMENT_SUCCEEDED: 'payment.succeeded',
   PAYMENT_FAILED: 'payment.failed',
   PAYMENT_REFUNDED: 'payment.refunded',
-  SUBSCRIPTION_CREATED: 'subscription.created',
-  SUBSCRIPTION_UPDATED: 'subscription.updated',
-  SUBSCRIPTION_CANCELLED: 'subscription.cancelled',
-  SUBSCRIPTION_RENEWED: 'subscription.renewed',
-  SUBSCRIPTION_EXPIRED: 'subscription.expired',
 } as const;
 
 export const PAYMENT_EVENTS = {
@@ -96,12 +74,4 @@ export const PAYMENT_EVENTS = {
   SUCCEEDED: 'PaymentSucceeded',
   FAILED: 'PaymentFailed',
   REFUNDED: 'PaymentRefunded',
-} as const;
-
-export const SUBSCRIPTION_EVENTS = {
-  CREATED: 'SubscriptionCreated',
-  UPDATED: 'SubscriptionUpdated',
-  CANCELLED: 'SubscriptionCancelled',
-  RENEWED: 'SubscriptionRenewed',
-  EXPIRED: 'SubscriptionExpired',
 } as const;
