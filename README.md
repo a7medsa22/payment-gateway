@@ -88,16 +88,17 @@ pnpm run start:dev
 ## 🗺️ Project Roadmap
 
 ### Phase 0 — Foundation & Cleanup
-**Status:** Not Started
+**Status:** Completed ✅
 
 Make the repository internally consistent before adding features.
 
-- [ ] Remove obsolete duplicate Payment model (`payment.ts` — `payment.aggregate.ts` is canonical)
-- [ ] Fix interface naming mismatch (`ICreatePayment` → `CreatePaymentInput`)
-- [ ] Fix directory typo (`creat-payment/` → `create-payment/`)
-- [ ] Fix config env var mismatch (`DB_HOST` vs `DATABASE_HOST`)
-- [ ] Evaluate and clean empty placeholder files
-- [ ] Consolidate root `ARCHITECTURE.md` into `docs/documentation/`
+- [x] Remove obsolete duplicate Payment model (`payment.ts` — `payment.aggregate.ts` is canonical)
+- [x] Fix interface naming mismatch (`ICreatePayment` → `CreatePaymentInput`)
+- [x] Fix directory typo (`creat-payment/` → `create-payment/`)
+- [x] Fix config env var mismatch (`DB_HOST` vs `DATABASE_HOST`)
+- [x] Evaluate and clean empty placeholder files
+- [x] Consolidate root `ARCHITECTURE.md` into `docs/documentation/`
+- [x] Remove `amqplib` unused dependency & RabbitMQ config
 
 **Done when:** Project compiles cleanly. No duplicates. No naming mismatches. Documentation reflects reality.
 
