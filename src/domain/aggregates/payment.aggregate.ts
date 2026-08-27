@@ -1,31 +1,35 @@
 import { DomainException } from '@domain/exceptions/domain.exception';
 import { Money } from '@domain/value-objects/money.vo';
+import { Clock, systemClock } from '@domain/clock';
 import {
+  FailureReason,
   PaymentProvider,
   PaymentStatus,
 } from '@shared/constants/payment.constants';
-import { randomUUID } from 'crypto';
+
 export interface PaymentProps {
-  id?: string;
+  id: string;
   userId: string;
   amount: Money;
   status: PaymentStatus;
   provider: PaymentProvider;
   providerPaymentId?: string;
-  clientSecret?: string;
   paymentMethodType?: string;
   description?: string;
-  metadata: Record<string, string | number | boolean>;
   errorCode?: string;
-  errorMessage?: string;
+  failureReason?: FailureReason;
   succeededAt?: Date;
   failedAt?: Date;
+  expiredAt?: Date;
+  cancelledAt?: Date;
   refundedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
   version?: number;
-  transaction?: Transaction[];
 }
+
+type PaymentCtorProps = PaymentProps & { createdAt: Date; updatedAt: Date };
+
 export class Payment {
   private readonly _id: string;
   private readonly _userId: string;
@@ -33,108 +37,102 @@ export class Payment {
   private _status: PaymentStatus;
   private _provider: PaymentProvider;
   private _providerPaymentId?: string;
-  private _clientSecret?: string;
   private _paymentMethodType?: string;
   private _description?: string;
-  private _metadata: Record<string, any>;
   private _errorCode?: string;
-  private _errorMessage?: string;
+  private _failureReason?: FailureReason;
   private _succeededAt?: Date;
   private _failedAt?: Date;
+  private _expiredAt?: Date;
+  private _cancelledAt?: Date;
   private _refundedAt?: Date;
   private readonly _createdAt: Date;
   private _updatedAt: Date;
+  private readonly _clock: Clock;
 
-  private constructor(probs: PaymentProps) {
-    this._id = probs.id || randomUUID();
+  
+  private constructor(probs: PaymentCtorProps, clock: Clock) {
+    this._id = probs.id 
+    this._clock = clock;
     this._userId = probs.userId;
     this._amount = probs.amount;
     this._status = probs.status;
     this._provider = probs.provider;
     this._providerPaymentId = probs.providerPaymentId;
-    this._clientSecret = probs.clientSecret;
     this._paymentMethodType = probs.paymentMethodType;
     this._description = probs.description;
-    this._metadata = probs.metadata || {};
     this._errorCode = probs.errorCode;
-    this._errorMessage = probs.errorMessage;
+    this._failureReason = probs.failureReason;
     this._succeededAt = probs.succeededAt;
     this._failedAt = probs.failedAt;
+    this._expiredAt = probs.expiredAt;
+    this._cancelledAt = probs.cancelledAt;
     this._refundedAt = probs.refundedAt;
-    this._createdAt = probs.createdAt || new Date();
-    this._updatedAt = probs.updatedAt || new Date();
+    this._createdAt = probs.createdAt;
+    this._updatedAt = probs.updatedAt;
   }
+
   static create(
-    props: Omit<PaymentProps, 'id' | 'status' | 'createdAt' | 'updatedAt'>,
+    props: Omit<PaymentProps,  'status' | 'createdAt' | 'updatedAt'>,
+    clock: Clock = systemClock,
   ): Payment {
-    if (props.amount.isZero() || !props.amount.isPositive()) {
-      throw new DomainException('Payment amount must be greater than zero');
-    }
+
     if (!props.userId) throw new DomainException('UserId is required');
     if (!props.provider)
       throw new DomainException('Payment provider is required');
 
-    return new Payment({
-      ...props,
-      status: PaymentStatus.PENDING,
-    });
+    const now = clock.now();
+    return new Payment(
+      {
+        ...props,
+        status: PaymentStatus.CREATED,
+        createdAt: now,
+        updatedAt: now,
+      },
+      clock,
+    );
   }
 
-  static reconstitute(props: PaymentProps): Payment {
-    return new Payment(props);
+  static reconstitute(
+    props: PaymentProps,
+    clock: Clock = systemClock,
+  ): Payment {
+    const now = clock.now();
+    return new Payment(
+      {
+        ...props,
+        createdAt: props.createdAt ?? now,
+        updatedAt: props.updatedAt ?? now,
+      },
+      clock,
+    );
   }
 
   get id(): string {
     return this._id;
   }
 
-  get userId(): string {
-    return this._userId;
-  }
+  get userId(): string { return this._userId; }
 
-  get amount(): Money {
-    return this._amount;
-  }
+  get status(): PaymentStatus { return this._status; }
 
-  get status(): string {
-    return this._status;
-  }
+  get amount(): Money { return this._amount; }
 
-  get provider(): string {
-    return this._provider;
-  }
+  get provider(): PaymentProvider { return this._provider; }
 
-  get providerPaymentId(): string | undefined {
-    return this._providerPaymentId;
-  }
+  get providerPaymentId(): string | undefined { return this._providerPaymentId; }
 
-  get clientSecret(): string | undefined {
-    return this._clientSecret;
-  }
 
-  get paymentMethodType(): string | undefined {
-    return this._paymentMethodType;
-  }
+  get paymentMethodType(): string | undefined { return this._paymentMethodType; }
 
-  get description(): string | undefined {
-    return this._description;
-  }
+  get description(): string | undefined { return this._description; }
 
-  get metadata(): Record<string, any> {
-    return { ...this._metadata };
-  }
 
-  get errorCode(): string | undefined {
-    return this._errorCode;
-  }
+  get errorCode(): string | undefined { return this._errorCode; }
 
-  get errorMessage(): string | undefined {
-    return this._errorMessage;
-  }
+  get failureReason(): string | undefined { return this._failureReason; }
 
-  get succeededAt(): Date | undefined {
-    return this._succeededAt;
-  }
+  get succeededAt(): Date | undefined { return this._succeededAt; }
 
   get failedAt(): Date | undefined {
     return this._failedAt;
@@ -153,51 +151,79 @@ export class Payment {
   }
 
   // Business Logic Methods
-  markAsProcessing(): void {
-    if (this._status !== PaymentStatus.PENDING) {
-      throw new DomainException(
-        `Cannot mark payment as processing from status: ${this._status}`,
-      );
-    }
-    this._status = PaymentStatus.PROCESSING;
-    this._updatedAt = new Date();
+
+  start(): void {
+    if (this.status !== PaymentStatus.CREATED)
+      throw new DomainException('Payment already started')
+
+    const now = this._clock.now();
+    this._status = PaymentStatus.PENDING;
+    this._updatedAt = now;
   }
-  markAsSucceeded(providerPaymentId: string, paymentMethodType?: string): void {
+  succeed(): void {
     this.ensureStatus(
+      'succeed',
       PaymentStatus.PENDING,
       PaymentStatus.PROCESSING,
-      PaymentStatus.REQUIRES_ACTION,
     );
 
     this._status = PaymentStatus.SUCCEEDED;
-    this._providerPaymentId = providerPaymentId;
-    this._paymentMethodType = paymentMethodType;
-    this._succeededAt = new Date();
-    this._updatedAt = new Date();
+    const now = this._clock.now();
+    this._succeededAt = now;
+    this._updatedAt = now;
     this._errorCode = undefined;
-    this._errorMessage = undefined;
-  }
-  markAsFailed(errorCode: string, errorMessage: string): void {
-    if (
-      this._status !== PaymentStatus.PENDING &&
-      this._status !== PaymentStatus.PROCESSING &&
-      this._status !== PaymentStatus.REQUIRES_ACTION
-    ) {
-      throw new DomainException(
-        `Cannot mark payment as failed from status: ${this._status}`,
-      );
-    }
-    this._status = PaymentStatus.FAILED;
-    this._errorCode = errorCode;
-    this._errorMessage = errorMessage;
-    this._failedAt = new Date();
-    this._updatedAt = new Date();
+    this._failureReason = undefined;
   }
 
-  private ensureStatus(...statuses: PaymentStatus[]): void {
+  fail(errorCode: string, failureReason: FailureReason): void {
+    this.ensureStatus(
+      'fail',
+      PaymentStatus.PENDING,
+      PaymentStatus.PROCESSING,
+    );
+    
+    this._status = PaymentStatus.FAILED;
+    this._errorCode = errorCode;
+    this._failureReason = failureReason;
+    const now = this._clock.now();
+    this._failedAt = now;
+    this._updatedAt = now;
+  }
+  cancel(errorCode: string, failureReason: FailureReason): void {
+    this.ensureStatus(
+      'cancel',
+      PaymentStatus.CREATED,
+      PaymentStatus.PENDING,
+      PaymentStatus.PROCESSING,
+    );
+
+    this._status = PaymentStatus.CANCELLED;
+    this._errorCode = errorCode;
+    this._failureReason = failureReason;
+    const now = this._clock.now();
+    this._cancelledAt = now;
+    this._updatedAt = now;
+  }
+  expire(errorCode: string, failureReason: FailureReason): void {
+    this.ensureStatus(
+      'expire',
+      PaymentStatus.CREATED,
+      PaymentStatus.PENDING,
+      PaymentStatus.PROCESSING,
+    );
+  
+    this._status = PaymentStatus.EXPIRED;
+    this._errorCode = errorCode;
+    this._failureReason = failureReason;
+    const now = this._clock.now();
+    this._expiredAt = now;
+    this._updatedAt = now;
+  }
+
+  private ensureStatus(action: string, ...statuses: PaymentStatus[]): void {
     if (!statuses.includes(this._status)) {
       throw new DomainException(
-        `Cannot mark payment as succeeded from status: ${this._status}`,
+        `Cannot mark payment as ${action} from status: ${this._status}`,
       );
     }
   }
