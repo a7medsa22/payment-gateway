@@ -1,578 +1,231 @@
-# Payment Microservice
+# Payment Gateway
 
-A production-ready, scalable payment processing microservice built with NestJS and Clean Architecture principles. This service provides a unified interface for handling payments and subscriptions across multiple payment providers while maintaining flexibility, maintainability, and extensibility.
-
-## 📋 Overview
-
-The Payment Microservice is a reusable, provider-agnostic solution designed to handle complex payment workflows in modern distributed systems. It abstracts the complexity of integrating multiple payment providers behind a clean, consistent API while providing robust event-driven communication with other services in your ecosystem.
-
-### Purpose and Value
-
-This microservice solves the challenge of managing multiple payment providers in a scalable, maintainable way. Instead of tightly coupling your application to specific payment gateway SDKs, this service provides:
-
-- **Provider Flexibility**: Easily switch between or add payment providers without changing your core business logic
-- **Unified Interface**: Consistent API regardless of the underlying payment provider
-- **Event-Driven Architecture**: Seamless integration with other services through RabbitMQ messaging
-- **Production Ready**: Built with enterprise-grade patterns for reliability, security, and scalability
-- **Developer Experience**: Clean architecture ensures code is testable, maintainable, and easy to understand
-- **Multi-Tenancy Ready**: Support for multiple payment providers per deployment with intelligent routing
-
-Whether you're building a SaaS platform, e-commerce application, or marketplace, this service provides the foundation for reliable payment processing without vendor lock-in.
+A payment processing microservice built with **NestJS**, **Clean Architecture**, and **Domain-Driven Design** principles. Designed to support multiple payment providers (Stripe, Paymob) behind a unified, provider-agnostic interface.
 
 ---
 
-## ✨ Features
+## Current Status
 
-### Payment Processing
-- ✅ One-time payment creation and processing
-- ✅ Recurring subscription management
-- ✅ Payment verification and confirmation
-- ✅ Refund processing
-- ✅ Payment method management
-- ✅ Multi-currency support
-
-### Provider Integration
-- ✅ **Stripe** integration (cards, ACH, wallets)
-- ✅ **Paymob** integration (MENA region support)
-- ✅ Provider-per-payment strategy
-- ✅ Automatic provider selection based on rules
-- ✅ Easy extension for additional providers
-
-### Architecture
-- ✅ Clean Architecture with clear layer separation
-- ✅ Domain-Driven Design principles
-- ✅ Event-driven communication via RabbitMQ
-- ✅ PostgreSQL for reliable data persistence
-- ✅ Idempotent operations
-- ✅ Comprehensive error handling
-
-### Security & Compliance
-- ✅ PCI-DSS compliant design (no sensitive card data storage)
-- ✅ Webhook signature verification
-- ✅ API authentication and authorization
-- ✅ Rate limiting and request throttling
-- ✅ Encrypted sensitive data at rest
-
-### Observability
-- ✅ Structured logging
-- ✅ Health check endpoints
-- ✅ Metrics collection (Prometheus-ready)
-- ✅ Distributed tracing support
-- ✅ Audit trail for all payment operations
+> **Early Development — Architecture & Domain Foundation**
+>
+> The project has a partial domain layer and a minimal application skeleton.
+> Infrastructure (database, provider adapters) and presentation (HTTP API) layers are not yet implemented.
+> There are no working API endpoints at this time.
 
 ---
 
-## 🏗️ Architecture
+## Architecture Summary
 
-### High-Level Overview - Enterprise Grade ✨
+The project follows **Clean Architecture** with four layers:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│            Payment Microservice (DDD + Clean Architecture)      │
-│                                                                 │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐   │
-│  │ Presentation │──────│  Application │──────│    Domain    │   │
-│  │   (API)      │      │  (Use Cases) │      │  (Aggregates)│   │
-│  └──────────────┘      └──────────────┘      └──────────────┘   │
-│         │                      │                      │         │
-│    Controllers           Unit of Work          Aggregate Roots  │
-│    Guards                Commands/Queries      Domain Service   │
-│    Interceptors            DTOs                Value Objects    │
-│                              │                 Domain Events    │
-│                    ┌──────────────────┐                         │
-│                    │ Infrastructure   │                         │
-│                    │  (Adapters)      │                         │
-│                    └──────────────────┘                         │
-│                          Repositories                           │
-│                          Event Publisher                        │
-│                          Provider Adapters                      │
-└─────────────────────────────────────────────────────────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-    RabbitMQ            PostgreSQL          Payment Providers
-  (Events)            (Unit of Work)      (Circuit Breaker)
+Presentation → Application → Domain
+                    ↑
+Infrastructure ─────┘
 ```
 
-### Enterprise Patterns Implemented ⭐
+| Layer | Responsibility | Status |
+|:---|:---|:---|
+| **Domain** | Business rules, aggregates, value objects, state machines | ⚠️ Partial |
+| **Application** | Use case orchestration, port interfaces | ⚠️ Minimal |
+| **Infrastructure** | Database (TypeORM/PostgreSQL), provider adapters (Stripe/Paymob) | ❌ Not started |
+| **Presentation** | HTTP controllers, request validation, error handling | ❌ Not started |
 
-**Domain Layer** - Pure business logic (NO infrastructure dependencies)
-- ✅ **Aggregate Roots**: Payment (contains Transactions)
-- ✅ **Value Objects**: Money (Decimal.js for precision)
-- ✅ **Domain Events**: Automatic event collection
-- ✅ **Domain Services**: Provider selection, validation
-- ✅ **Specifications**: Business rule encapsulation
+**Core Design Principles:**
+- Dependencies point inward — Domain has zero external dependencies
+- Abstractions are introduced only when justified, not for architectural aesthetics
+- Financial precision via `Decimal.js` (Money value object)
+- Provider agnosticism — Domain/Application know nothing about Stripe or Paymob specifics
 
-**Application Layer** - Use case orchestration (NO domain logic)
-- ✅ **Commands**: CQRS pattern
-- ✅ **Unit of Work**: Transaction management
-- ✅ **Idempotency**: Duplicate prevention
-- ✅ **Event Publishing**: Atomic with database commits
-
-**Infrastructure Layer** - External adapters
-- ✅ **Repositories**: With optimistic locking
-- ✅ **Provider Adapters**: Anti-corruption layer
-- ✅ **Event Publisher**: Domain event to message broker
-- ✅ **Circuit Breaker**: Provider fault tolerance
-
-**Presentation Layer** - HTTP/gRPC interfaces
-- ✅ **Controllers**: Thin API layer
-- ✅ **Authentication**: JWT with guards
-- ✅ **Validation**: Input sanitization
-- ✅ **Exception Filters**: Consistent error responses
-
-### Key Improvements Over Basic Implementation
-
-🔥 **Financial Safety**
-- Money calculations use Decimal.js (no floating-point errors)
-- All transactions are atomic (Unit of Work pattern)
-
-🔥 **Data Consistency**
-- Aggregate pattern ensures invariants
-- Optimistic locking prevents race conditions
-- Events auto-published with database commits
-
-🔥 **Operational Excellence**
-- Idempotency prevents duplicate charges
-- Correlation IDs for distributed tracing
-- Circuit breakers prevent cascading failures
-
-For detailed architecture documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md)
+For the detailed architectural reference, see [`docs/documentation/ARCHITECTURE.md`](./docs/documentation/ARCHITECTURE.md).
 
 ---
 
-## 🚀 Quick Start
+## Tech Stack
+
+| Category | Technology |
+|:---|:---|
+| Framework | NestJS 11 |
+| Language | TypeScript 5.7 |
+| Database | PostgreSQL 16 (via TypeORM) |
+| Financial Math | Decimal.js |
+| Payment Providers | Stripe, Paymob (planned) |
+| Validation | class-validator, class-transformer |
+| API Docs | Swagger (@nestjs/swagger) |
+| Containerization | Docker, Docker Compose |
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
 - Node.js >= 18.x
-- PostgreSQL >= 14.x
-- RabbitMQ >= 3.11.x
-- Docker & Docker Compose (optional but recommended)
+- PostgreSQL >= 14.x (or Docker)
+- pnpm (recommended) or npm
 
-### Installation
+### Setup
 
-1. **Clone the repository**
 ```bash
+# Clone
 git clone https://github.com/a7medsa22/payment-gateway.git
 cd payment-gateway
+
+# Install dependencies
+pnpm install
+
+# Start PostgreSQL (via Docker)
+docker-compose up -d postgres
+
+# Start development server
+pnpm run start:dev
 ```
 
-2. **Install dependencies**
-```bash
-npm install
-```
-
-3. **Configure environment variables**
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
-4. **Start infrastructure services (PostgreSQL, RabbitMQ)**
-```bash
-docker-compose up -d postgres rabbitmq
-```
-
-5. **Run database migrations**
-```bash
-npm run migration:run
-```
-
-6. **Start the service**
-```bash
-# Development mode
-npm run start:dev
-
-# Production mode
-npm run build
-npm run start:prod
-```
-
-The service will be available at `http://localhost:3000`
-
-### Docker Deployment
-
-```bash
-# Build and run all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f payment-service
-
-# Stop services
-docker-compose down
-```
+> **Note:** The application boots but does not expose any API endpoints until the Presentation layer is implemented (Phase 5).
 
 ---
 
-## 📚 Documentation
+## 🗺️ Project Roadmap
 
-- **[Architecture Documentation](./docs/documentation/ARCHITECTURE.md)** - Detailed architecture and design decisions
-- **[API Reference](./docs/API.md)** - Complete API documentation with examples
-- **[Database Schema](./docs/DATABASE.md)** - Database design and relationships
-- **[Event System](./docs/EVENTS.md)** - Event-driven architecture and message formats
-- **[Provider Integration Guide](./docs/PROVIDERS.md)** - Adding new payment providers
-- **[Deployment Guide](./docs/DEPLOYMENT.md)** - Production deployment instructions
-- **[Development Guide](./docs/DEVELOPMENT.md)** - Development setup and guidelines
-- **[Security Guide](./docs/SECURITY.md)** - Security best practices and compliance
-- **[Testing Guide](./TESTING.md)** - Testing strategies and examples
-- **[Troubleshooting](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
+### Phase 0 — Foundation & Cleanup
+**Status:** Completed ✅
 
----
+Make the repository internally consistent before adding features.
 
-## 🔌 API Overview
+- [x] Remove obsolete duplicate Payment model (`payment.ts` — `payment.aggregate.ts` is canonical)
+- [x] Fix interface naming mismatch (`ICreatePayment` → `CreatePaymentInput`)
+- [x] Fix directory typo (`creat-payment/` → `create-payment/`)
+- [x] Fix config env var mismatch (`DB_HOST` vs `DATABASE_HOST`)
+- [x] Evaluate and clean empty placeholder files
+- [x] Consolidate root `ARCHITECTURE.md` into `docs/documentation/`
+- [x] Remove `amqplib` unused dependency & RabbitMQ config
 
-### Authentication
-
-All API requests require authentication via JWT token:
-
-```bash
-curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  https://api.yourdomain.com/api/v1/payments
-```
-
-### Core Endpoints
-
-**Payments**
-```
-POST   /api/v1/payments           # Create a new payment
-GET    /api/v1/payments/:id       # Get payment details
-GET    /api/v1/payments           # List payments (paginated)
-POST   /api/v1/payments/:id/verify    # Verify payment status
-POST   /api/v1/payments/:id/refund    # Refund a payment
-```
-
-**Subscriptions**
-```
-POST   /api/v1/subscriptions      # Create subscription
-GET    /api/v1/subscriptions/:id  # Get subscription details
-GET    /api/v1/subscriptions      # List subscriptions
-POST   /api/v1/subscriptions/:id/cancel  # Cancel subscription
-PATCH  /api/v1/subscriptions/:id  # Update subscription
-```
-
-**Webhooks**
-```
-POST   /api/v1/webhooks/stripe    # Stripe webhook handler
-POST   /api/v1/webhooks/paymob    # Paymob webhook handler
-```
-
-### Example: Create Payment
-
-```bash
-curl -X POST https://api.yourdomain.com/api/v1/payments \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userId": "user-123",
-    "amount": 99.99,
-    "currency": "USD",
-    "provider": "stripe",
-    "paymentMethod": "card",
-    "metadata": {
-      "orderId": "order-456"
-    }
-  '
-```
-
-Response:
-```json
-{
-  "id": "pay_1a2b3c4d",
-  "userId": "user-123",
-  "amount": 99.99,
-  "currency": "USD",
-  "status": "pending",
-  "provider": "stripe",
-  "providerPaymentId": "pi_1a2b3c4d",
-  "clientSecret": "pi_1a2b3c4d_secret_xyz",
-  "createdAt": "2026-02-05T10:30:00Z"
-}
-```
-
-For complete API documentation, see [API.md](./docs/API.md)
+**Done when:** Project compiles cleanly. No duplicates. No naming mismatches. Documentation reflects reality.
 
 ---
 
-## 🔄 Event System
+### Phase 1 — Domain Core
+**Status:** Completed ✅
 
-The service publishes events to RabbitMQ for asynchronous processing:
+Build a coherent, framework-independent Payment domain model.
 
-### Published Events
+- [x] Move domain enums from `shared/constants/` to `domain/enums/`
+- [x] Evolve Transaction into child entity of Payment aggregate
+- [x] Finalize Payment state machine (added `process()` transition)
+- [x] Write unit tests for Payment aggregate
+- [x] Write unit tests for Money value object
+- [x] Write unit tests for Transaction entity
 
-- `payment.created` - New payment initiated
-- `payment.succeeded` - Payment completed successfully
-- `payment.failed` - Payment failed
-- `payment.refunded` - Payment refunded
-- `subscription.created` - New subscription created
-- `subscription.renewed` - Subscription renewed
-- `subscription.cancelled` - Subscription cancelled
-- `subscription.expired` - Subscription expired
-
-### Event Example
-
-```json
-{
-  "eventId": "evt_1a2b3c4d",
-  "eventType": "payment.succeeded",
-  "timestamp": "2026-02-05T10:30:00Z",
-  "aggregateId": "pay_1a2b3c4d",
-  "data": {
-    "paymentId": "pay_1a2b3c4d",
-    "userId": "user-123",
-    "amount": 99.99,
-    "currency": "USD",
-    "provider": "stripe",
-    "metadata": {
-      "orderId": "order-456"
-    }
-  }
-}
-```
-
-For detailed event documentation, see [EVENTS.md](./docs/EVENTS.md)
+**Done when:** Domain has zero infrastructure imports. All state transitions tested. Aggregate boundary enforced.
 
 ---
 
-## 🛠️ Configuration
+### Phase 2 — Application Core & Ports
+**Status:** Not Started
 
-### Environment Variables
+Define application contracts and complete use case orchestration.
 
-```bash
-# Application
-NODE_ENV=production
-PORT=3000
-API_VERSION=v1
+- [ ] Define `PaymentGateway` port interface
+- [ ] Expand `PaymentRepository` port (`findById`, `update`)
+- [ ] Fix `CreatePaymentUseCase` (validation, gateway call, return DTO)
+- [ ] (Conditional) `RefundPaymentUseCase` if refunds are confirmed in scope
+- [ ] Write use case tests with mocked ports
 
-# Database
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_NAME=payment_service
-DATABASE_USER=postgres
-DATABASE_PASSWORD=your_secure_password
-DATABASE_SSL=true
-
-# RabbitMQ
-RABBITMQ_URL=amqp://localhost:5672
-RABBITMQ_EXCHANGE=payment.events
-RABBITMQ_QUEUE_PREFIX=payment_service
-
-# Stripe
-STRIPE_SECRET_KEY=sk_live_xxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxx
-STRIPE_API_VERSION=2023-10-16
-
-# Paymob
-PAYMOB_API_KEY=your_api_key
-PAYMOB_SECRET_KEY=your_secret_key
-PAYMOB_INTEGRATION_ID=your_integration_id
-
-# Security
-JWT_SECRET=your_jwt_secret
-JWT_EXPIRATION=1h
-API_RATE_LIMIT=100
-API_RATE_WINDOW=15m
-
-# Observability
-LOG_LEVEL=info
-ENABLE_METRICS=true
-ENABLE_TRACING=true
-```
+**Done when:** Use cases are testable with mocked ports. No unsafe type casts. Use cases return DTOs.
 
 ---
 
-## 🧪 Testing
+### Phase 3 — Persistence
+**Status:** Not Started
 
-```bash
-# Unit tests
-npm run test
+Implement database layer.
 
-# Integration tests
-npm run test:integration
+- [ ] Create TypeORM schemas (separate from domain objects)
+- [ ] Create domain ↔ schema mappers
+- [ ] Implement `TypeOrmPaymentRepository`
+- [ ] Configure TypeORM, create migrations
 
-# E2E tests
-npm run test:e2e
-
-# Test coverage
-npm run test:cov
-
-# Specific test file
-npm run test -- payment.service.spec.ts
-```
-
-### Test Coverage Goals
-
-- Unit Tests: > 80% coverage
-- Integration Tests: Critical paths covered
-- E2E Tests: All API endpoints tested
-
-For detailed testing guide, see [TESTING.md](./docs/TESTING.md)
+**Done when:** Payments persist in PostgreSQL. Domain objects have no TypeORM decorators.
 
 ---
 
-## 🚢 Deployment
+### Phase 4 — Payment Provider Integration
+**Status:** Not Started
 
-### Docker
+Implement Stripe adapter.
 
-```bash
-# Build image
-docker build -t payment-service:latest .
+- [ ] Implement `StripePaymentGateway` (implements `PaymentGateway` port)
+- [ ] Stripe request/response mapping
+- [ ] Error translation
+- [ ] (Optional) `PaymobPaymentGateway` if required
 
-# Run container
-docker run -d \
-  --name payment-service \
-  -p 3000:3000 \
-  --env-file .env.production \
-  payment-service:latest
-```
-
-### Kubernetes
-
-```bash
-# Apply configurations
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secrets.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/ingress.yaml
-
-# Check status
-kubectl get pods -n payment-service
-```
-
-### Health Checks
-
-```bash
-# Liveness probe
-curl http://localhost:3000/health/live
-
-# Readiness probe
-curl http://localhost:3000/health/ready
-
-# Detailed health check
-curl http://localhost:3000/health
-```
-
-For complete deployment guide, see [DEPLOYMENT.md](./DEPLOYMENT.md)
+**Done when:** System creates payments through Stripe end-to-end. No Stripe types leak inward.
 
 ---
 
-## 🔐 Security
+### Phase 5 — HTTP API & Webhooks
+**Status:** Not Started
 
-- **PCI Compliance**: Service is designed to minimize PCI scope
-- **No Card Storage**: Card data never touches your servers
-- **Webhook Verification**: All webhooks signatures are verified
-- **API Authentication**: JWT-based authentication required
-- **Rate Limiting**: Protection against abuse
-- **Input Validation**: All inputs validated and sanitized
-- **Encryption**: Sensitive data encrypted at rest
-- **Audit Logging**: Complete audit trail of all operations
+Expose functionality via REST API.
 
-For security best practices, see [SECURITY.md](./SECURITY.md)
+- [ ] Payment controller (create, get)
+- [ ] Request validation DTOs
+- [ ] Domain exception → HTTP response filter
+- [ ] Webhook controller (Stripe)
+- [ ] NestJS module wiring + Swagger
+- [ ] Authentication boundary decision
 
----
-
-## 📊 Monitoring
-
-### Metrics
-
-The service exposes Prometheus metrics at `/metrics`:
-
-- `payment_created_total` - Total payments created
-- `payment_succeeded_total` - Total successful payments
-- `payment_failed_total` - Total failed payments
-- `payment_processing_duration_seconds` - Payment processing time
-- `subscription_active_total` - Active subscriptions count
-- `webhook_received_total` - Webhooks received
-
-### Logging
-
-Structured JSON logging with log levels:
-- **ERROR**: System errors requiring immediate attention
-- **WARN**: Warning conditions
-- **INFO**: General informational messages
-- **DEBUG**: Detailed debug information
-
-### Alerting
-
-Recommended alerts:
-- Payment success rate drops below 95%
-- Webhook processing failures
-- Database connection issues
-- High API error rates
-- Service health check failures
+**Done when:** `POST /api/v1/payments` works end-to-end via HTTP.
 
 ---
 
-## 🤝 Contributing
+### Phase 6 — Production Reliability
+**Status:** Not Started
 
-We welcome contributions! Please see our [Contributing Guide](./docs/CONTRIBUTING.md) for details.
+Harden for production. Each pattern must be justified.
 
-### Development Workflow
+- [ ] Idempotency (prevent duplicate charges)
+- [ ] E2E tests
+- [ ] Health checks
+- [ ] Structured logging
+- [ ] Rate limiting
+- [ ] Error response hardening
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Code Standards
-
-- Follow NestJS best practices
-- Maintain Clean Architecture principles
-- Write unit tests for new features
-- Update documentation
-- Follow conventional commits
+**Done when:** E2E tests pass. System is deployable to staging.
 
 ---
 
-## 📄 License
+### Phase 7 — Messaging & Distributed Capabilities
+**Status:** Not Started — Future / As Needed
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+> Not required for the first working version.
 
----
+- [ ] Domain Events + Event Publisher
+- [ ] RabbitMQ integration
+- [ ] Circuit Breaker
+- [ ] Distributed tracing
+- [ ] Subscription management (if needed)
 
-## 🆘 Support
-
-- **Documentation**: [Full documentation](./docs)
-- **Issues**: [GitHub Issues](https://github.com/a7medsa22/payment-gateway/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/a7medsa22/payment-gateway/discussions)
-- **Email**: ahmedsalahsotohy@gmail.com
-
----
-
-## 🗺️ Roadmap
-
-### Current Version (v1.0)
-- ✅ Stripe and Paymob integration
-- ✅ One-time payments
-- ✅ Subscription management
-- ✅ Event-driven architecture
-- ✅ PostgreSQL persistence
-
-### Upcoming Features (v1.1)
-- 🔄 PayPal integration
-- 🔄 Apple Pay / Google Pay support
-- 🔄 Payment dispute handling
-- 🔄 Advanced analytics dashboard
-- 🔄 Multi-tenant support
-
-### Future Considerations (v2.0)
-- 💡 Cryptocurrency payment support
-- 💡 AI-powered fraud detection
-- 💡 GraphQL API
-- 💡 Payment orchestration for complex flows
-- 💡 Low-code payment workflow builder
+**Done when:** Per-feature, only when justified by concrete requirements.
 
 ---
 
-## 🙏 Acknowledgments
+## Documentation
 
-- NestJS team for the excellent framework
-- Stripe and Paymob for comprehensive payment APIs
-- The open-source community for inspiration and tools
+| Document | Description |
+|:---|:---|
+| [`docs/documentation/ARCHITECTURE.md`](./docs/documentation/ARCHITECTURE.md) | Detailed architecture, layer rules, domain model, payment flow, problems, decisions, full roadmap with exit criteria |
+| [`docs/API.md`](./docs/API.md) | API endpoint reference (planned — not yet implemented) |
+| [`docs/details/DATABASE.md`](./docs/details/DATABASE.md) | Database schema documentation (planned) |
 
 ---
 
-**Built with ❤️ using NestJS and Clean Architecture**
+## License
+
+MIT License — see [LICENSE](./LICENSE).
+
+---
+
+## Author
+
+**Ahamed Sotohy** — [ahmedsalahsotohy@gmail.com](mailto:ahmedsalahsotohy@gmail.com) — [@a7medsa22](https://github.com/a7medsa22)

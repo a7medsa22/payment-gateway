@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { Currency } from '@shared/constants/payment.constants';
+import { Currency } from '@domain/enums';
 
 export class Money {
   private readonly _amount: Decimal;
@@ -151,7 +151,9 @@ export class Money {
     let remainder = this._amount;
 
     for (let i = 0; i < ratios.length - 1; i++) {
-      const share = this._amount.times(ratios[i]).toDecimalPlaces(4, Decimal.ROUND_DOWN);
+      const share = this._amount
+        .times(ratios[i])
+        .toDecimalPlaces(4, Decimal.ROUND_DOWN);
       results.push(new Money(share, this._currency));
       remainder = remainder.minus(share);
     }
@@ -175,7 +177,6 @@ export class Money {
   toString(): string {
     return `${this._currency} ${this._amount.toFixed(2)}`;
   }
-
 
   toDetailedString(): string {
     return `${this._currency} ${this._amount.toFixed(4)}`;
