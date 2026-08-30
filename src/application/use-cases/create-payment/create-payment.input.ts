@@ -1,7 +1,7 @@
-
-export interface CreatePaymentInput{
-    userId:string,
-    amount: string,
-    currency: string,
-    provider: string
+export interface CreatePaymentInput {
+  userId: string;
+  amount: string;
+  currency: string;
+  provider: string;
+  description?: string;
 }
