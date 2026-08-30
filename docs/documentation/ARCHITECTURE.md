@@ -679,22 +679,23 @@ All problems identified through codebase analysis. No code changes are made in t
 
 ### Structural Problems
 
-| # | Problem | Location | Phase |
-|:---|:---|:---|:---|
-| 5 | **Domain enums live in `shared/`** — `PaymentStatus`, `PaymentProvider`, `Currency`, etc. are domain concepts but imported from `@shared/constants/`. Domain depends outward. | `shared/constants/payment.constants.ts` | 1 |
-| 6 | **Transaction is standalone** — Public constructor, not owned by Payment aggregate. No aggregate boundary enforcement. | `domain/entities/transaction.entity.ts` | 1 |
-| 7 | **PaymentRepository is minimal** — Only `save()`. Missing `findById`, `update`. | `application/repositories/` | 2 |
-| 8 | **No PaymentGateway port** — Use case creates/persists a Payment but never calls any external provider. | `application/port/` (empty) | 2 |
-| 9 | **Unsafe type coercion** — `input.currency as Currency` and implicit `input.provider` usage with no validation. | `create-payment.use-case.ts` | 2 |
+| # | Problem | Location | Phase | Status |
+|:---|:---|:---|:---|:---|
+| 5 | **Domain enums live in `shared/`** — `PaymentStatus`, `PaymentProvider`, `Currency`, etc. are domain concepts but imported from `@shared/constants/`. Domain depends outward. | `shared/constants/payment.constants.ts` | 1 | ✅ Resolved |
+| 6 | **Transaction is standalone** — Public constructor, not owned by Payment aggregate. No aggregate boundary enforcement. | `domain/entities/transaction.entity.ts` | 1 | ✅ Resolved |
+| 7 | **PaymentRepository is minimal** — Only `save()`. Missing `findById`. | `application/ports/` | 2 | ✅ Resolved |
+| 8 | **No PaymentGateway port** — Use case creates/persists a Payment but never calls any external provider. | `application/ports/` | 2 | ✅ Resolved |
+| 9 | **Unsafe type coercion** — `input.currency as Currency` and implicit `input.provider` usage with no validation. | `create-payment.use-case.ts` | 2 | ✅ Resolved |
 
 ### Design Concerns
 
-| # | Problem | Notes | Phase |
-|:---|:---|:---|:---|
-| 10 | **Use case returns aggregate directly** | Should return a DTO to prevent domain leaking outward | 2 |
-| 11 | **No refund transition** on Payment aggregate | Only add if refunds are confirmed in scope. Do not add prematurely. | 2 (conditional) |
-| 12 | **Subscription constants without implementation** | `SubscriptionStatus`, `BillingInterval` enums exist. Zero domain model. Not in core scope. | Optional |
-| 13 | **`amqplib` installed but unused** | Installed dependency ≠ implemented feature. No RabbitMQ code exists. | Evaluate for removal |
+| # | Problem | Notes | Phase | Status |
+|:---|:---|:---|:---|:---|
+| 10 | **Use case returns aggregate directly** | Returns `PaymentResultDto` to prevent domain leaking outward | 2 | ✅ Resolved |
+| 11 | **No refund transition** on Payment aggregate | Deferred until provider integration in Phase 4 requires it. | 2 (conditional) | Pending |
+| 12 | **Subscription constants without implementation** | `SubscriptionStatus`, `BillingInterval` enums exist. Zero domain model. Not in core scope. | Optional | Pending |
+| 13 | **`amqplib` installed but unused** | Installed dependency ≠ implemented feature. No RabbitMQ code exists. | Evaluate for removal | Pending |
+
 
 ### Empty Placeholder Files
 

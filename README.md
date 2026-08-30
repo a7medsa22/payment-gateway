@@ -121,17 +121,18 @@ Build a coherent, framework-independent Payment domain model.
 ---
 
 ### Phase 2 — Application Core & Ports
-**Status:** Not Started
+**Status:** Completed ✅
 
 Define application contracts and complete use case orchestration.
 
-- [ ] Define `PaymentGateway` port interface
-- [ ] Expand `PaymentRepository` port (`findById`, `update`)
-- [ ] Fix `CreatePaymentUseCase` (validation, gateway call, return DTO)
-- [ ] (Conditional) `RefundPaymentUseCase` if refunds are confirmed in scope
-- [ ] Write use case tests with mocked ports
+- [x] Define `PaymentGateway` port interface & `PaymentGatewayResolver`
+- [x] Expand `PaymentRepository` port (`findById`) in `src/application/ports/`
+- [x] Refactor `CreatePaymentUseCase` (runtime primitive validation, gateway delegation, return DTO)
+- [x] Create input validation mappers (`validateCurrency`, `validateProvider`)
+- [x] Write use case unit tests with mocked ports
 
 **Done when:** Use cases are testable with mocked ports. No unsafe type casts. Use cases return DTOs.
+
 
 ---
 
