@@ -1,5 +1,5 @@
 import { registerAs } from '@nestjs/config';
-import { PaymentProvider } from '@shared/constants/payment.constants';
+import { PaymentProvider } from '@domain/enums';
 
 export default registerAs('providers', () => ({
   defaultProvider:

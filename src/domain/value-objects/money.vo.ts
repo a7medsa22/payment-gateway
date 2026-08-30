@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { Currency } from '@shared/constants/payment.constants';
+import { Currency } from '@domain/enums';
 
 export class Money {
   private readonly _amount: Decimal;
