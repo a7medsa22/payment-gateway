@@ -105,15 +105,16 @@ Make the repository internally consistent before adding features.
 ---
 
 ### Phase 1 — Domain Core
-**Status:** Not Started
+**Status:** Completed ✅
 
 Build a coherent, framework-independent Payment domain model.
 
-- [ ] Move domain enums from `shared/constants/` to `domain/enums/`
-- [ ] Evolve Transaction into child entity of Payment aggregate
-- [ ] Finalize Payment state machine (all valid transitions)
-- [ ] Write unit tests for Payment aggregate
-- [ ] Write unit tests for Money value object
+- [x] Move domain enums from `shared/constants/` to `domain/enums/`
+- [x] Evolve Transaction into child entity of Payment aggregate
+- [x] Finalize Payment state machine (added `process()` transition)
+- [x] Write unit tests for Payment aggregate
+- [x] Write unit tests for Money value object
+- [x] Write unit tests for Transaction entity
 
 **Done when:** Domain has zero infrastructure imports. All state transitions tested. Aggregate boundary enforced.
 
