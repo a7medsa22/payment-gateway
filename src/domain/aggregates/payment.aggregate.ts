@@ -5,7 +5,10 @@ import {
   FailureReason,
   PaymentProvider,
   PaymentStatus,
-} from '@shared/constants/payment.constants';
+  TransactionStatus,
+  TransactionType,
+} from '@domain/enums';
+import { Transaction } from '@domain/entities/transaction.entity';
 
 export interface PaymentProps {
   id: string;
@@ -18,6 +21,7 @@ export interface PaymentProps {
   description?: string;
   errorCode?: string;
   failureReason?: FailureReason;
+  transactions?: Transaction[];
   succeededAt?: Date;
   failedAt?: Date;
   expiredAt?: Date;
@@ -30,6 +34,24 @@ export interface PaymentProps {
 
 type PaymentCtorProps = PaymentProps & { createdAt: Date; updatedAt: Date };
 
+/**
+ * Payment Aggregate Root State Machine:
+ *
+ *            ┌──────────────────────────────────────────────┐
+ *            │                                              │
+ * CREATED ──start()──→ PENDING ──process()──→ PROCESSING    │
+ *   │                    │                      │           │
+ *   │   cancel()/expire()│   cancel()/expire()  │ cancel()/ │
+ *   │                    │                      │ expire()  │
+ *   │                    │   succeed()          │ succeed() │
+ *   │                    ├──────────────────→ SUCCEEDED      │
+ *   │                    │   fail()             │ fail()     │
+ *   │                    ├──────────────────→ FAILED         │
+ *   │                    │                      │            │
+ *   ├───────────────────→├──────────────────────→ CANCELLED  │
+ *   ├───────────────────→├──────────────────────→ EXPIRED    │
+ *   └────────────────────┘                                   │
+ */
 export class Payment {
   private readonly _id: string;
   private readonly _userId: string;
@@ -41,6 +63,7 @@ export class Payment {
   private _description?: string;
   private _errorCode?: string;
   private _failureReason?: FailureReason;
+  private readonly _transactions: Transaction[];
   private _succeededAt?: Date;
   private _failedAt?: Date;
   private _expiredAt?: Date;
@@ -50,33 +73,32 @@ export class Payment {
   private _updatedAt: Date;
   private readonly _clock: Clock;
 
-  
-  private constructor(probs: PaymentCtorProps, clock: Clock) {
-    this._id = probs.id 
+  private constructor(props: PaymentCtorProps, clock: Clock) {
+    this._id = props.id;
     this._clock = clock;
-    this._userId = probs.userId;
-    this._amount = probs.amount;
-    this._status = probs.status;
-    this._provider = probs.provider;
-    this._providerPaymentId = probs.providerPaymentId;
-    this._paymentMethodType = probs.paymentMethodType;
-    this._description = probs.description;
-    this._errorCode = probs.errorCode;
-    this._failureReason = probs.failureReason;
-    this._succeededAt = probs.succeededAt;
-    this._failedAt = probs.failedAt;
-    this._expiredAt = probs.expiredAt;
-    this._cancelledAt = probs.cancelledAt;
-    this._refundedAt = probs.refundedAt;
-    this._createdAt = probs.createdAt;
-    this._updatedAt = probs.updatedAt;
+    this._userId = props.userId;
+    this._amount = props.amount;
+    this._status = props.status;
+    this._provider = props.provider;
+    this._providerPaymentId = props.providerPaymentId;
+    this._paymentMethodType = props.paymentMethodType;
+    this._description = props.description;
+    this._errorCode = props.errorCode;
+    this._failureReason = props.failureReason;
+    this._transactions = props.transactions ? [...props.transactions] : [];
+    this._succeededAt = props.succeededAt;
+    this._failedAt = props.failedAt;
+    this._expiredAt = props.expiredAt;
+    this._cancelledAt = props.cancelledAt;
+    this._refundedAt = props.refundedAt;
+    this._createdAt = props.createdAt;
+    this._updatedAt = props.updatedAt;
   }
 
   static create(
-    props: Omit<PaymentProps,  'status' | 'createdAt' | 'updatedAt'>,
+    props: Omit<PaymentProps, 'status' | 'createdAt' | 'updatedAt'>,
     clock: Clock = systemClock,
   ): Payment {
-
     if (!props.userId) throw new DomainException('UserId is required');
     if (!props.provider)
       throw new DomainException('Payment provider is required');
@@ -86,6 +108,7 @@ export class Payment {
       {
         ...props,
         status: PaymentStatus.CREATED,
+        transactions: [],
         createdAt: now,
         updatedAt: now,
       },
@@ -101,6 +124,7 @@ export class Payment {
     return new Payment(
       {
         ...props,
+        transactions: props.transactions ?? [],
         createdAt: props.createdAt ?? now,
         updatedAt: props.updatedAt ?? now,
       },
@@ -108,31 +132,67 @@ export class Payment {
     );
   }
 
+  // Getters
   get id(): string {
     return this._id;
   }
 
-  get userId(): string { return this._userId; }
+  get userId(): string {
+    return this._userId;
+  }
 
-  get status(): PaymentStatus { return this._status; }
+  get status(): PaymentStatus {
+    return this._status;
+  }
 
-  get amount(): Money { return this._amount; }
+  get amount(): Money {
+    return this._amount;
+  }
 
-  get provider(): PaymentProvider { return this._provider; }
+  get provider(): PaymentProvider {
+    return this._provider;
+  }
 
-  get providerPaymentId(): string | undefined { return this._providerPaymentId; }
+  get providerPaymentId(): string | undefined {
+    return this._providerPaymentId;
+  }
 
+  get paymentMethodType(): string | undefined {
+    return this._paymentMethodType;
+  }
 
-  get paymentMethodType(): string | undefined { return this._paymentMethodType; }
+  get description(): string | undefined {
+    return this._description;
+  }
 
-  get description(): string | undefined { return this._description; }
+  get errorCode(): string | undefined {
+    return this._errorCode;
+  }
 
+  get failureReason(): FailureReason | undefined {
+    return this._failureReason;
+  }
 
-  get errorCode(): string | undefined { return this._errorCode; }
+  get transactions(): readonly Transaction[] {
+    return [...this._transactions];
+  }
 
-  get failureReason(): string | undefined { return this._failureReason; }
+  get totalCharged(): Money {
+    const successfulCharges = this._transactions.filter(
+      (t) => t.type === TransactionType.CHARGE && t.isSuccessful(),
+    );
+    if (successfulCharges.length === 0) {
+      return Money.zero(this._amount.currency);
+    }
+    return successfulCharges.reduce(
+      (acc, t) => acc.add(t.amount),
+      Money.zero(this._amount.currency),
+    );
+  }
 
-  get succeededAt(): Date | undefined { return this._succeededAt; }
+  get succeededAt(): Date | undefined {
+    return this._succeededAt;
+  }
 
   get failedAt(): Date | undefined {
     return this._failedAt;
@@ -140,6 +200,14 @@ export class Payment {
 
   get refundedAt(): Date | undefined {
     return this._refundedAt;
+  }
+
+  get expiredAt(): Date | undefined {
+    return this._expiredAt;
+  }
+
+  get cancelledAt(): Date | undefined {
+    return this._cancelledAt;
   }
 
   get createdAt(): Date {
@@ -153,14 +221,24 @@ export class Payment {
   // Business Logic Methods
 
   start(): void {
-    if (this.status !== PaymentStatus.CREATED)
-      throw new DomainException('Payment already started')
+    if (this._status !== PaymentStatus.CREATED)
+      throw new DomainException('Payment already started');
 
     const now = this._clock.now();
     this._status = PaymentStatus.PENDING;
     this._updatedAt = now;
   }
-  succeed(): void {
+
+  process(): void {
+    if (this._status !== PaymentStatus.PENDING)
+      throw new DomainException('Payment must be pending to be processed');
+
+    const now = this._clock.now();
+    this._status = PaymentStatus.PROCESSING;
+    this._updatedAt = now;
+  }
+
+  succeed(providerTransactionId?: string): void {
     this.ensureStatus(
       'succeed',
       PaymentStatus.PENDING,
@@ -173,6 +251,23 @@ export class Payment {
     this._updatedAt = now;
     this._errorCode = undefined;
     this._failureReason = undefined;
+
+    // Aggregate manages child Transaction creation
+    const chargeTransaction = Transaction.createInternal(
+      {
+        id: crypto.randomUUID(),
+        paymentId: this._id,
+        type: TransactionType.CHARGE,
+        status: TransactionStatus.SUCCEEDED,
+        amount: this._amount,
+        provider: this._provider,
+        providerTransactionId,
+        description: 'Payment charge',
+        processedAt: now,
+      },
+      this._clock,
+    );
+    this._transactions.push(chargeTransaction);
   }
 
   fail(errorCode: string, failureReason: FailureReason): void {
@@ -181,7 +276,7 @@ export class Payment {
       PaymentStatus.PENDING,
       PaymentStatus.PROCESSING,
     );
-    
+
     this._status = PaymentStatus.FAILED;
     this._errorCode = errorCode;
     this._failureReason = failureReason;
@@ -189,6 +284,7 @@ export class Payment {
     this._failedAt = now;
     this._updatedAt = now;
   }
+
   cancel(errorCode: string, failureReason: FailureReason): void {
     this.ensureStatus(
       'cancel',
@@ -204,6 +300,7 @@ export class Payment {
     this._cancelledAt = now;
     this._updatedAt = now;
   }
+
   expire(errorCode: string, failureReason: FailureReason): void {
     this.ensureStatus(
       'expire',
@@ -211,7 +308,7 @@ export class Payment {
       PaymentStatus.PENDING,
       PaymentStatus.PROCESSING,
     );
-  
+
     this._status = PaymentStatus.EXPIRED;
     this._errorCode = errorCode;
     this._failureReason = failureReason;
