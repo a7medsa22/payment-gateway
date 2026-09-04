@@ -6,11 +6,10 @@ A payment processing microservice built with **NestJS**, **Clean Architecture**,
 
 ## Current Status
 
-> **Early Development — Architecture & Domain Foundation**
+> **Active Development — Phase 3 (Persistence & Core Flows) Completed**
 >
-> The project has a partial domain layer and a minimal application skeleton.
-> Infrastructure (database, provider adapters) and presentation (HTTP API) layers are not yet implemented.
-> There are no working API endpoints at this time.
+> The project has a complete domain model, application use cases (`CreatePayment`, `RefundPayment`, `GetPayment`), and PostgreSQL persistence via TypeORM with explicit database transactions (no cascade/eager).
+> Next up: Phase 4 (Stripe / Paymob provider adapters) and Phase 5 (HTTP Presentation layer).
 
 ---
 
@@ -26,9 +25,9 @@ Infrastructure ─────┘
 
 | Layer | Responsibility | Status |
 |:---|:---|:---|
-| **Domain** | Business rules, aggregates, value objects, state machines | ⚠️ Partial |
-| **Application** | Use case orchestration, port interfaces | ⚠️ Minimal |
-| **Infrastructure** | Database (TypeORM/PostgreSQL), provider adapters (Stripe/Paymob) | ❌ Not started |
+| **Domain** | Business rules, aggregates, value objects, state machines | ✅ Completed |
+| **Application** | Use case orchestration, port interfaces, payment flows | ✅ Completed |
+| **Infrastructure** | Database (TypeORM/PostgreSQL), provider adapters (Stripe/Paymob) | ⚠️ Persistence complete, Adapters pending |
 | **Presentation** | HTTP controllers, request validation, error handling | ❌ Not started |
 
 **Core Design Principles:**
@@ -136,17 +135,19 @@ Define application contracts and complete use case orchestration.
 
 ---
 
-### Phase 3 — Persistence
-**Status:** Not Started
+### Phase 3 — Persistence & Core Flows
+**Status:** Completed ✅
 
-Implement database layer.
+Implement database layer and complete vertical slice.
 
-- [ ] Create TypeORM schemas (separate from domain objects)
-- [ ] Create domain ↔ schema mappers
-- [ ] Implement `TypeOrmPaymentRepository`
-- [ ] Configure TypeORM, create migrations
+- [x] Create TypeORM schemas (separate from domain objects, no cascade/eager)
+- [x] Create domain ↔ schema mappers (`PaymentMapper`)
+- [x] Implement `TypeOrmPaymentRepository` with explicit `DataSource.transaction()`
+- [x] Implement `RefundPaymentUseCase` & `GetPaymentUseCase`
+- [x] Write 28 exhaustive aggregate tests for `refund()`
+- [x] Configure TypeORM, PersistenceModule, PaymentModule, and AppModule
 
-**Done when:** Payments persist in PostgreSQL. Domain objects have no TypeORM decorators.
+**Done when:** Payments persist in PostgreSQL. Domain objects have no TypeORM decorators. Transactions are atomic.
 
 ---
 
