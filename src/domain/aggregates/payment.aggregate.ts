@@ -190,6 +190,29 @@ export class Payment {
     );
   }
 
+  get totalRefunded(): Money {
+    const successfulRefunds = this._transactions.filter(
+      (t) => t.isRefund() && t.isSuccessful(),
+    );
+    if (successfulRefunds.length === 0) {
+      return Money.zero(this._amount.currency);
+    }
+    return successfulRefunds.reduce(
+      (acc, t) => acc.add(t.amount),
+      Money.zero(this._amount.currency),
+    );
+  }
+
+  get refundableAmount(): Money {
+    if (
+      this._status !== PaymentStatus.SUCCEEDED &&
+      this._status !== PaymentStatus.PARTIALLY_REFUNDED
+    ) {
+      return Money.zero(this._amount.currency);
+    }
+    return this.totalCharged.subtract(this.totalRefunded);
+  }
+
   get succeededAt(): Date | undefined {
     return this._succeededAt;
   }
@@ -315,6 +338,67 @@ export class Payment {
     const now = this._clock.now();
     this._expiredAt = now;
     this._updatedAt = now;
+  }
+
+  refund(refundAmount?: Money, reason?: string): void {
+    if (
+      this._status !== PaymentStatus.SUCCEEDED &&
+      this._status !== PaymentStatus.PARTIALLY_REFUNDED
+    ) {
+      throw new DomainException(
+        `Cannot refund payment from status: ${this._status}`,
+      );
+    }
+
+    const effectiveAmount = refundAmount ?? this.refundableAmount;
+
+    if (effectiveAmount.isZero() || !effectiveAmount.isPositive()) {
+      throw new DomainException('Refund amount must be positive');
+    }
+
+    if (effectiveAmount.currency !== this._amount.currency) {
+      throw new DomainException(
+        `Refund currency mismatch: expected ${this._amount.currency}, got ${effectiveAmount.currency}`,
+      );
+    }
+
+    if (effectiveAmount.isGreaterThan(this.refundableAmount)) {
+      throw new DomainException(
+        `Refund amount (${effectiveAmount.amount}) exceeds refundable amount (${this.refundableAmount.amount})`,
+      );
+    }
+
+    const now = this._clock.now();
+    const newTotalRefunded = this.totalRefunded.add(effectiveAmount);
+    const isFullRefund = newTotalRefunded.equals(this.totalCharged);
+
+    const txType = isFullRefund
+      ? TransactionType.REFUND
+      : TransactionType.PARTIAL_REFUND;
+
+    this._status = isFullRefund
+      ? PaymentStatus.REFUNDED
+      : PaymentStatus.PARTIALLY_REFUNDED;
+
+    if (isFullRefund) {
+      this._refundedAt = now;
+    }
+    this._updatedAt = now;
+
+    const refundTx = Transaction.createInternal(
+      {
+        id: crypto.randomUUID(),
+        paymentId: this._id,
+        type: txType,
+        status: TransactionStatus.SUCCEEDED,
+        amount: effectiveAmount,
+        provider: this._provider,
+        description: reason ?? (isFullRefund ? 'Full refund' : 'Partial refund'),
+        processedAt: now,
+      },
+      this._clock,
+    );
+    this._transactions.push(refundTx);
   }
 
   private ensureStatus(action: string, ...statuses: PaymentStatus[]): void {
