@@ -20,8 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "typeorm-ts-node-commonjs",
     "migration:generate": "npm run typeorm -- migration:generate",
-    "migration:run": "npm run typeorm -- migration:run -d src/infrastructure/database/config/typeorm.config.ts",
-    "migration:revert": "npm run typeorm -- migration:revert -d src/infrastructure/database/config/typeorm.config.ts"
+    "migration:run": "npm run typeorm -- migration:run -d src/infrastructure/persistence/typeorm/typeorm.config.ts",
+    "migration:revert": "npm run typeorm -- migration:revert -d src/infrastructure/persistence/typeorm/typeorm.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
