@@ -1,19 +1,33 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PersistenceModule } from '@infrastructure/persistence/persistence.module';
 import { PaymentRepository } from './ports/payment.repository';
 import { PaymentGatewayResolver } from './ports/payment-gateway-resolver.port';
 import { CreatePaymentUseCase } from './use-cases/create-payment/create-payment.use-case';
 import { RefundPaymentUseCase } from './use-cases/refund-payment/refund-payment.use-case';
 import { GetPaymentUseCase } from './use-cases/get-payment/get-payment.use-case';
-import { StubPaymentGatewayResolver } from '@infrastructure/gateways/stub-payment-gateway-resolver';
+import { StripePaymentGateway } from '@infrastructure/gateways/stripe-payment-gateway';
+import { PaymentGatewayResolverImpl } from '@infrastructure/gateways/payment-gateway-resolver.impl';
 
 @Module({
   imports: [PersistenceModule],
   providers: [
-    StubPaymentGatewayResolver,
+    {
+      provide: 'StripePaymentGateway',
+      useFactory: (configService: ConfigService) => {
+        const secretKey =
+          configService.get<string>('providers.stripe.secretKey') || '';
+        const apiVersion = configService.get<string>(
+          'providers.stripe.apiVersion',
+        );
+        return new StripePaymentGateway(secretKey, apiVersion);
+      },
+      inject: [ConfigService],
+    },
+    PaymentGatewayResolverImpl,
     {
       provide: 'PaymentGatewayResolver',
-      useExisting: StubPaymentGatewayResolver,
+      useExisting: PaymentGatewayResolverImpl,
     },
     {
       provide: CreatePaymentUseCase,
@@ -41,6 +55,7 @@ import { StubPaymentGatewayResolver } from '@infrastructure/gateways/stub-paymen
     RefundPaymentUseCase,
     GetPaymentUseCase,
     'PaymentGatewayResolver',
+    'StripePaymentGateway',
   ],
 })
 export class PaymentModule {}

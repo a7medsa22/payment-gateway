@@ -11,6 +11,7 @@ export default registerAs('providers', () => ({
       : true,
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    apiVersion: process.env.STRIPE_API_VERSION || undefined,
   },
   paymob: {
     enabled: process.env.PAYMOB_ENABLED

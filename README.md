@@ -6,10 +6,10 @@ A payment processing microservice built with **NestJS**, **Clean Architecture**,
 
 ## Current Status
 
-> **Active Development — Phase 3 (Persistence & Core Flows) Completed**
+> **Active Development — Phase 4 (Payment Provider Integration) Completed**
 >
-> The project has a complete domain model, application use cases (`CreatePayment`, `RefundPayment`, `GetPayment`), and PostgreSQL persistence via TypeORM with explicit database transactions (no cascade/eager).
-> Next up: Phase 4 (Stripe / Paymob provider adapters) and Phase 5 (HTTP Presentation layer).
+> The project has a complete domain model, application use cases (`CreatePayment`, `RefundPayment`, `GetPayment`), PostgreSQL persistence via TypeORM, and Stripe payment gateway adapter integration.
+> Next up: Phase 5 (HTTP API Presentation layer & Webhooks).
 
 ---
 
@@ -27,7 +27,7 @@ Infrastructure ─────┘
 |:---|:---|:---|
 | **Domain** | Business rules, aggregates, value objects, state machines | ✅ Completed |
 | **Application** | Use case orchestration, port interfaces, payment flows | ✅ Completed |
-| **Infrastructure** | Database (TypeORM/PostgreSQL), provider adapters (Stripe/Paymob) | ⚠️ Persistence complete, Adapters pending |
+| **Infrastructure** | Database (TypeORM/PostgreSQL), Stripe gateway adapter | ✅ Completed |
 | **Presentation** | HTTP controllers, request validation, error handling | ❌ Not started |
 
 **Core Design Principles:**
@@ -152,14 +152,14 @@ Implement database layer and complete vertical slice.
 ---
 
 ### Phase 4 — Payment Provider Integration
-**Status:** Not Started
+**Status:** Completed ✅
 
 Implement Stripe adapter.
 
-- [ ] Implement `StripePaymentGateway` (implements `PaymentGateway` port)
-- [ ] Stripe request/response mapping
-- [ ] Error translation
-- [ ] (Optional) `PaymobPaymentGateway` if required
+- [x] Implement `StripePaymentGateway` (implements `PaymentGateway` port)
+- [x] Stripe request/response mapping
+- [x] Error translation to `PaymentGatewayException`
+- [x] DI wiring via `PaymentGatewayResolverImpl` and `PaymentModule`
 
 **Done when:** System creates payments through Stripe end-to-end. No Stripe types leak inward.
 
