@@ -1,8 +1,8 @@
 # Current Phase Tracking
 
-## Active Milestone: Phase 5 — HTTP Presentation Layer & Webhooks
+## Active Milestone: Phase 6 — Paymob Regional Provider Integration
 
-**Project Status**: Core Domain, Application Use Cases, Database Persistence (PostgreSQL / TypeORM), and Stripe Infrastructure Adapter are completed. The active focus is building the external HTTP API and webhook ingestion layer.
+**Project Status**: Core Domain, Application Use Cases, Database Persistence (PostgreSQL / TypeORM), Stripe Infrastructure Adapter, and HTTP Presentation Layer & Webhooks (Phase 5) are completed.
 
 ---
 
@@ -14,29 +14,34 @@
 | **Phase 2** | Application Layer (Use Cases, Ports, DTOs) | ✅ Completed |
 | **Phase 3** | Persistence Layer (TypeORM Entities, Repositories, Migrations) | ✅ Completed |
 | **Phase 4** | Gateway Integration (Stripe Gateway Adapter) | ✅ Completed |
-| **Phase 5** | HTTP API Presentation & Webhooks | 🔄 In Progress |
-| **Phase 6** | Paymob Regional Provider Integration | ⏳ Pending |
+| **Phase 5** | HTTP API Presentation & Webhooks | ✅ Completed |
+| **Phase 6** | Paymob Regional Provider Integration | 🔄 Next Up |
 | **Phase 7** | Production Hardening (Rate Limiting, Metrics, E2E Suite) | ⏳ Pending |
 
 ---
 
-## Phase 5 Backlog & Task Breakdown
+## Phase 5 Completed Backlog
 
-- [ ] **Task 5.1: Payment Controllers**
-  - Implement `PaymentController` with routes:
+- [x] **Task 5.1: Payment Controllers**
+  - Implemented `PaymentController` with routes:
     - `POST /api/v1/payments` (Create & authorize payment)
     - `GET /api/v1/payments/:id` (Retrieve payment details)
     - `POST /api/v1/payments/:id/refund` (Initiate refund)
-- [ ] **Task 5.2: Presentation DTOs & Validation**
-  - Create request DTOs with `class-validator` rules (`CreatePaymentDto`, `RefundPaymentDto`).
-  - Configure Swagger documentation decorators (`@ApiOperation`, `@ApiResponse`).
-- [ ] **Task 5.3: Exception Filter & Error Mapping**
-  - Implement `HttpExceptionFilter` mapping domain exceptions (`PaymentNotFoundException`, `InvalidPaymentStateException`) to proper HTTP status codes (`400`, `404`, `422`).
-- [ ] **Task 5.4: Webhook Handling**
-  - Implement `StripeWebhookController` handling `POST /api/v1/webhooks/stripe`.
-  - Validate Stripe signatures with raw body parsing before event consumption.
-- [ ] **Task 5.5: End-to-End Testing**
-  - Write Supertest e2e tests covering the payment lifecycle through the HTTP boundary.
+- [x] **Task 5.2: Presentation DTOs & Validation**
+  - Created request DTOs with `class-validator` rules (`CreatePaymentRequestDto`, `RefundPaymentRequestDto`).
+  - Configured Swagger documentation decorators (`@ApiOperation`, `@ApiResponse`, `@ApiParam`).
+- [x] **Task 5.3: Exception Filter & Error Mapping**
+  - Implemented `HttpExceptionFilter` mapping domain and gateway exceptions (`PaymentNotFoundException` -> 404, `PaymentException` -> 422, `DomainException` -> 400, `PaymentGatewayException` -> 502, `HttpException` -> validation details).
+- [x] **Task 5.4: Webhook Handling & Deduplication**
+  - Implemented `StripeWebhookController` handling `POST /api/v1/webhooks/stripe`.
+  - Cryptographic Stripe signature validation with raw body buffer via `@RawBody()`.
+  - Persistent deduplication table (`WebhookEventSchema` & `TypeOrmWebhookEventRepository` - Option A).
+  - Idempotent event routing for `payment_intent.succeeded` and `payment_intent.payment_failed`.
+- [x] **Task 5.5: Presentation Module & Bootstrap Configuration**
+  - Created `PresentationModule` and integrated with `AppModule`.
+  - Configured `main.ts` with global prefix (`api/v1`), global `ValidationPipe`, global `HttpExceptionFilter`, OpenAPI Swagger documentation at `/docs`, and `rawBody: true`.
+- [x] **Task 5.6: End-to-End Testing**
+  - Implemented comprehensive hermetic Supertest suite in `test/payment.e2e-spec.ts` covering payment creation, retrieval, partial/full refunds, error mappings, webhook signature verification, and event deduplication replay protection.
 
 ---
 

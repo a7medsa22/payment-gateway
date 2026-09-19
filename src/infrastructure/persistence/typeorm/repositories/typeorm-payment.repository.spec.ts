@@ -147,4 +147,43 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
       });
     });
   });
+
+  describe('findByProviderPaymentId()', () => {
+    it('should return null when payment is not found by providerPaymentId', async () => {
+      paymentRepo.findOne.mockResolvedValue(null);
+
+      const result = await repository.findByProviderPaymentId('pi_nonexistent');
+
+      expect(result).toBeNull();
+      expect(transactionRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('should find payment by providerPaymentId and load its transactions', async () => {
+      const paymentSchema = new PaymentSchema();
+      paymentSchema.id = 'pay-found-2';
+      paymentSchema.userId = 'user-2';
+      paymentSchema.amount = '50.0000';
+      paymentSchema.currency = 'USD';
+      paymentSchema.status = PaymentStatus.PENDING;
+      paymentSchema.provider = PaymentProvider.STRIPE;
+      paymentSchema.providerPaymentId = 'pi_found_123';
+      paymentSchema.createdAt = new Date('2025-01-01');
+      paymentSchema.updatedAt = new Date('2025-01-01');
+
+      paymentRepo.findOne.mockResolvedValue(paymentSchema);
+      transactionRepo.find.mockResolvedValue([]);
+
+      const payment = await repository.findByProviderPaymentId('pi_found_123');
+
+      expect(payment).not.toBeNull();
+      expect(payment!.id).toBe('pay-found-2');
+      expect(paymentRepo.findOne).toHaveBeenCalledWith({
+        where: { providerPaymentId: 'pi_found_123' },
+      });
+      expect(transactionRepo.find).toHaveBeenCalledWith({
+        where: { paymentId: 'pay-found-2' },
+        order: { createdAt: 'ASC' },
+      });
+    });
+  });
 });

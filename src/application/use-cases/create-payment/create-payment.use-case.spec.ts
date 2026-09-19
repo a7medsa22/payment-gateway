@@ -19,6 +19,7 @@ describe('CreatePaymentUseCase', () => {
     mockPaymentRepository = {
       save: jest.fn().mockResolvedValue(undefined),
       findById: jest.fn().mockResolvedValue(null),
+      findByProviderPaymentId: jest.fn().mockResolvedValue(null),
     };
 
     mockPaymentGateway = {

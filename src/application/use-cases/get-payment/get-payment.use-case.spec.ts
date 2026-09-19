@@ -3,7 +3,10 @@ import { PaymentRepository } from '@application/ports/payment.repository';
 import { Payment } from '@domain/aggregates/payment.aggregate';
 import { Money } from '@domain/value-objects/money.vo';
 import { PaymentProvider, PaymentStatus } from '@domain/enums';
-import { PaymentNotFoundException } from '@domain/exceptions/domain.exception';
+import {
+  PaymentNotFoundException,
+} from '@domain/exceptions/domain.exception';
+import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 
 describe('GetPaymentUseCase', () => {
   let useCase: GetPaymentUseCase;
@@ -13,6 +16,7 @@ describe('GetPaymentUseCase', () => {
     paymentRepository = {
       save: jest.fn(),
       findById: jest.fn(),
+      findByProviderPaymentId: jest.fn(),
     };
     useCase = new GetPaymentUseCase(paymentRepository);
   });
@@ -31,7 +35,7 @@ describe('GetPaymentUseCase', () => {
 
     paymentRepository.findById.mockResolvedValue(payment);
 
-    const result = await useCase.execute('pay-get-1');
+    const result = await useCase.execute('pay-get-1', 'user-get-1');
 
     expect(result.id).toBe('pay-get-1');
     expect(result.userId).toBe('user-get-1');
@@ -50,8 +54,22 @@ describe('GetPaymentUseCase', () => {
   it('should throw PaymentNotFoundException when payment does not exist', async () => {
     paymentRepository.findById.mockResolvedValue(null);
 
-    await expect(useCase.execute('non-existent')).rejects.toThrow(
+    await expect(useCase.execute('non-existent', 'user-get-1')).rejects.toThrow(
       PaymentNotFoundException,
+    );
+  });
+
+  it('should throw ForbiddenAccessException when userId does not match payment owner', async () => {
+    const payment = Payment.create({
+      id: 'pay-get-2',
+      userId: 'owner-user',
+      amount: Money.from('100.00', 'USD'),
+      provider: PaymentProvider.STRIPE,
+    });
+    paymentRepository.findById.mockResolvedValue(payment);
+
+    await expect(useCase.execute('pay-get-2', 'other-user')).rejects.toThrow(
+      ForbiddenAccessException,
     );
   });
 });

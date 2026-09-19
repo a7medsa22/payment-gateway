@@ -12,6 +12,7 @@ import {
   PaymentException,
   PaymentNotFoundException,
 } from '@domain/exceptions/domain.exception';
+import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 import { PaymentGatewayException } from '@infrastructure/gateways/payment-gateway.exception';
 
 @Catch()
@@ -28,7 +29,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let message: string | string[];
 
     // Order matters: check from most specific to least specific
-    if (exception instanceof PaymentNotFoundException) {
+    if (exception instanceof ForbiddenAccessException) {
+      statusCode = HttpStatus.FORBIDDEN;
+      error = 'ForbiddenAccessException';
+      message = exception.message;
+    } else if (exception instanceof PaymentNotFoundException) {
       statusCode = HttpStatus.NOT_FOUND;
       error = 'PaymentNotFoundException';
       message = exception.message;

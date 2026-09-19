@@ -46,4 +46,23 @@ export class TypeOrmPaymentRepository implements PaymentRepository {
 
     return PaymentMapper.toDomain(paymentSchema, transactionSchemas);
   }
+
+  async findByProviderPaymentId(
+    providerPaymentId: string,
+  ): Promise<Payment | null> {
+    const paymentSchema = await this.paymentRepo.findOne({
+      where: { providerPaymentId },
+    });
+
+    if (!paymentSchema) {
+      return null;
+    }
+
+    const transactionSchemas = await this.transactionRepo.find({
+      where: { paymentId: paymentSchema.id },
+      order: { createdAt: 'ASC' },
+    });
+
+    return PaymentMapper.toDomain(paymentSchema, transactionSchemas);
+  }
 }

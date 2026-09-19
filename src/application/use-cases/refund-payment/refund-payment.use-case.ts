@@ -2,6 +2,7 @@ import { PaymentRepository } from '@application/ports/payment.repository';
 import { RefundPaymentInput } from './refund-payment.input';
 import { RefundResultDto } from '@application/dtos/refund-result.dto';
 import { PaymentNotFoundException } from '@domain/exceptions/domain.exception';
+import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 import { Money } from '@domain/value-objects/money.vo';
 import { Currency } from '@domain/enums';
 import { validateCurrency } from '@application/mappers/input.mapper';
@@ -15,6 +16,12 @@ export class RefundPaymentUseCase {
     if (!payment) {
       throw new PaymentNotFoundException(
         `Payment with ID ${input.paymentId} not found`,
+      );
+    }
+
+    if (payment.userId !== input.userId) {
+      throw new ForbiddenAccessException(
+        'You do not have permission to refund this payment',
       );
     }
 
