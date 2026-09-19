@@ -7,6 +7,7 @@ import {
   DomainException,
   PaymentNotFoundException,
 } from '@domain/exceptions/domain.exception';
+import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 
 describe('RefundPaymentUseCase', () => {
   let useCase: RefundPaymentUseCase;
@@ -16,6 +17,7 @@ describe('RefundPaymentUseCase', () => {
     paymentRepository = {
       save: jest.fn().mockResolvedValue(undefined),
       findById: jest.fn(),
+      findByProviderPaymentId: jest.fn().mockResolvedValue(null),
     };
     useCase = new RefundPaymentUseCase(paymentRepository);
   });
@@ -38,6 +40,7 @@ describe('RefundPaymentUseCase', () => {
 
     const result = await useCase.execute({
       paymentId: 'pay-test-1',
+      userId: 'user-1',
     });
 
     expect(result.status).toBe(PaymentStatus.REFUNDED);
@@ -53,6 +56,7 @@ describe('RefundPaymentUseCase', () => {
 
     const result = await useCase.execute({
       paymentId: 'pay-test-1',
+      userId: 'user-1',
       amount: '40.00',
       reason: 'Customer return',
     });
@@ -68,8 +72,19 @@ describe('RefundPaymentUseCase', () => {
     paymentRepository.findById.mockResolvedValue(null);
 
     await expect(
-      useCase.execute({ paymentId: 'non-existent' }),
+      useCase.execute({ paymentId: 'non-existent', userId: 'user-1' }),
     ).rejects.toThrow(PaymentNotFoundException);
+
+    expect(paymentRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('should throw ForbiddenAccessException when userId does not own the payment', async () => {
+    const payment = createSucceededPayment(); // userId = 'user-1'
+    paymentRepository.findById.mockResolvedValue(payment);
+
+    await expect(
+      useCase.execute({ paymentId: 'pay-test-1', userId: 'attacker-user' }),
+    ).rejects.toThrow(ForbiddenAccessException);
 
     expect(paymentRepository.save).not.toHaveBeenCalled();
   });
@@ -84,7 +99,7 @@ describe('RefundPaymentUseCase', () => {
     paymentRepository.findById.mockResolvedValue(payment);
 
     await expect(
-      useCase.execute({ paymentId: 'pay-created' }),
+      useCase.execute({ paymentId: 'pay-created', userId: 'user-1' }),
     ).rejects.toThrow(DomainException);
 
     expect(paymentRepository.save).not.toHaveBeenCalled();

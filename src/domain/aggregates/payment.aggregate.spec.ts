@@ -9,7 +9,10 @@ import {
   TransactionStatus,
   TransactionType,
 } from '@domain/enums';
-import { DomainException } from '@domain/exceptions/domain.exception';
+import {
+  DomainException,
+  PaymentException,
+} from '@domain/exceptions/domain.exception';
 
 describe('Payment Aggregate', () => {
   const fixedDate = new Date('2025-01-01T00:00:00Z');
@@ -437,55 +440,55 @@ describe('Payment Aggregate', () => {
     });
 
     // Guard / Invariant / Validation Tests (Cases 17-28)
-    it('Case 17: should throw DomainException when refunding a CREATED payment', () => {
+    it('Case 17: should throw PaymentException when refunding a CREATED payment', () => {
       const payment = createTestPayment();
-      expect(() => payment.refund()).toThrow(DomainException);
+      expect(() => payment.refund()).toThrow(PaymentException);
       expect(() => payment.refund()).toThrow('Cannot refund payment from status: created');
     });
 
-    it('Case 18: should throw DomainException when refunding a PENDING payment', () => {
+    it('Case 18: should throw PaymentException when refunding a PENDING payment', () => {
       const payment = createTestPayment();
       payment.start();
-      expect(() => payment.refund()).toThrow(DomainException);
+      expect(() => payment.refund()).toThrow(PaymentException);
       expect(() => payment.refund()).toThrow('Cannot refund payment from status: pending');
     });
 
-    it('Case 19: should throw DomainException when refunding a PROCESSING payment', () => {
+    it('Case 19: should throw PaymentException when refunding a PROCESSING payment', () => {
       const payment = createTestPayment();
       payment.start();
       payment.process();
-      expect(() => payment.refund()).toThrow(DomainException);
+      expect(() => payment.refund()).toThrow(PaymentException);
       expect(() => payment.refund()).toThrow('Cannot refund payment from status: processing');
     });
 
-    it('Case 20: should throw DomainException when refunding a FAILED payment', () => {
+    it('Case 20: should throw PaymentException when refunding a FAILED payment', () => {
       const payment = createTestPayment();
       payment.start();
       payment.fail('card_declined', FailureReason.CARD_DECLINED);
-      expect(() => payment.refund()).toThrow(DomainException);
+      expect(() => payment.refund()).toThrow(PaymentException);
       expect(() => payment.refund()).toThrow('Cannot refund payment from status: failed');
     });
 
-    it('Case 21: should throw DomainException when refunding a CANCELLED payment', () => {
+    it('Case 21: should throw PaymentException when refunding a CANCELLED payment', () => {
       const payment = createTestPayment();
       payment.cancel('user_cancel', FailureReason.INVALID_REQUEST);
-      expect(() => payment.refund()).toThrow(DomainException);
+      expect(() => payment.refund()).toThrow(PaymentException);
       expect(() => payment.refund()).toThrow('Cannot refund payment from status: cancelled');
     });
 
-    it('Case 22: should throw DomainException when refunding an EXPIRED payment', () => {
+    it('Case 22: should throw PaymentException when refunding an EXPIRED payment', () => {
       const payment = createTestPayment();
       payment.expire('timeout', FailureReason.UNKNOWN);
-      expect(() => payment.refund()).toThrow(DomainException);
+      expect(() => payment.refund()).toThrow(PaymentException);
       expect(() => payment.refund()).toThrow('Cannot refund payment from status: expired');
     });
 
-    it('Case 23: should throw DomainException when refunding an already fully REFUNDED payment (refundableAmount is zero)', () => {
+    it('Case 23: should throw PaymentException when refunding an already fully REFUNDED payment (refundableAmount is zero)', () => {
       const payment = createSucceededPayment();
       payment.refund(); // Fully refunded
       expect(payment.status).toBe(PaymentStatus.REFUNDED);
 
-      expect(() => payment.refund()).toThrow(DomainException);
+      expect(() => payment.refund()).toThrow(PaymentException);
       expect(() => payment.refund()).toThrow('Cannot refund payment from status: refunded');
     });
 

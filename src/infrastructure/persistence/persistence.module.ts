@@ -3,7 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PaymentSchema } from './typeorm/schemas/payment.schema';
 import { TransactionSchema } from './typeorm/schemas/transaction.schema';
+import { WebhookEventSchema } from './typeorm/schemas/webhook-event.schema';
 import { TypeOrmPaymentRepository } from './typeorm/repositories/typeorm-payment.repository';
+import { TypeOrmWebhookEventRepository } from './typeorm/repositories/typeorm-webhook-event.repository';
 
 @Module({
   imports: [
@@ -12,10 +14,14 @@ import { TypeOrmPaymentRepository } from './typeorm/repositories/typeorm-payment
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         ...config.get('database'),
-        entities: [PaymentSchema, TransactionSchema],
+        entities: [PaymentSchema, TransactionSchema, WebhookEventSchema],
       }),
     }),
-    TypeOrmModule.forFeature([PaymentSchema, TransactionSchema]),
+    TypeOrmModule.forFeature([
+      PaymentSchema,
+      TransactionSchema,
+      WebhookEventSchema,
+    ]),
   ],
   providers: [
     TypeOrmPaymentRepository,
@@ -23,7 +29,18 @@ import { TypeOrmPaymentRepository } from './typeorm/repositories/typeorm-payment
       provide: 'PaymentRepository',
       useExisting: TypeOrmPaymentRepository,
     },
+    TypeOrmWebhookEventRepository,
+    {
+      provide: 'WebhookEventRepository',
+      useExisting: TypeOrmWebhookEventRepository,
+    },
   ],
-  exports: ['PaymentRepository', TypeOrmPaymentRepository, TypeOrmModule],
+  exports: [
+    'PaymentRepository',
+    TypeOrmPaymentRepository,
+    'WebhookEventRepository',
+    TypeOrmWebhookEventRepository,
+    TypeOrmModule,
+  ],
 })
 export class PersistenceModule {}

@@ -1,4 +1,7 @@
-import { DomainException } from '@domain/exceptions/domain.exception';
+import {
+  DomainException,
+  PaymentException,
+} from '@domain/exceptions/domain.exception';
 import { Money } from '@domain/value-objects/money.vo';
 import { Clock, systemClock } from '@domain/clock';
 import {
@@ -245,7 +248,7 @@ export class Payment {
 
   start(): void {
     if (this._status !== PaymentStatus.CREATED)
-      throw new DomainException('Payment already started');
+      throw new PaymentException('Payment already started');
 
     const now = this._clock.now();
     this._status = PaymentStatus.PENDING;
@@ -254,7 +257,7 @@ export class Payment {
 
   process(): void {
     if (this._status !== PaymentStatus.PENDING)
-      throw new DomainException('Payment must be pending to be processed');
+      throw new PaymentException('Payment must be pending to be processed');
 
     const now = this._clock.now();
     this._status = PaymentStatus.PROCESSING;
@@ -345,7 +348,7 @@ export class Payment {
       this._status !== PaymentStatus.SUCCEEDED &&
       this._status !== PaymentStatus.PARTIALLY_REFUNDED
     ) {
-      throw new DomainException(
+      throw new PaymentException(
         `Cannot refund payment from status: ${this._status}`,
       );
     }
@@ -403,7 +406,7 @@ export class Payment {
 
   private ensureStatus(action: string, ...statuses: PaymentStatus[]): void {
     if (!statuses.includes(this._status)) {
-      throw new DomainException(
+      throw new PaymentException(
         `Cannot mark payment as ${action} from status: ${this._status}`,
       );
     }
