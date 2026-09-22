@@ -23,14 +23,15 @@ Presentation → Application → Domain
 Infrastructure ─────┘
 ```
 
-| Layer | Responsibility | Status |
-|:---|:---|:---|
-| **Domain** | Business rules, aggregates, value objects, state machines | ✅ Completed |
-| **Application** | Use case orchestration, port interfaces, payment flows | ✅ Completed |
-| **Infrastructure** | Database (TypeORM/PostgreSQL), Stripe gateway adapter | ✅ Completed |
-| **Presentation** | HTTP controllers, request validation, error handling | ❌ Not started |
+| Layer              | Responsibility                                            | Status         |
+| :----------------- | :-------------------------------------------------------- | :------------- |
+| **Domain**         | Business rules, aggregates, value objects, state machines | ✅ Completed   |
+| **Application**    | Use case orchestration, port interfaces, payment flows    | ✅ Completed   |
+| **Infrastructure** | Database (TypeORM/PostgreSQL), Stripe gateway adapter     | ✅ Completed   |
+| **Presentation**   | HTTP controllers, request validation, error handling      | ❌ Not started |
 
 **Core Design Principles:**
+
 - Dependencies point inward — Domain has zero external dependencies
 - Abstractions are introduced only when justified, not for architectural aesthetics
 - Financial precision via `Decimal.js` (Money value object)
@@ -42,16 +43,16 @@ For the detailed architectural reference, see [`docs/documentation/ARCHITECTURE.
 
 ## Tech Stack
 
-| Category | Technology |
-|:---|:---|
-| Framework | NestJS 11 |
-| Language | TypeScript 5.7 |
-| Database | PostgreSQL 16 (via TypeORM) |
-| Financial Math | Decimal.js |
-| Payment Providers | Stripe, Paymob (planned) |
-| Validation | class-validator, class-transformer |
-| API Docs | Swagger (@nestjs/swagger) |
-| Containerization | Docker, Docker Compose |
+| Category          | Technology                         |
+| :---------------- | :--------------------------------- |
+| Framework         | NestJS 11                          |
+| Language          | TypeScript 5.7                     |
+| Database          | PostgreSQL 16 (via TypeORM)        |
+| Financial Math    | Decimal.js                         |
+| Payment Providers | Stripe, Paymob (planned)           |
+| Validation        | class-validator, class-transformer |
+| API Docs          | Swagger (@nestjs/swagger)          |
+| Containerization  | Docker, Docker Compose             |
 
 ---
 
@@ -87,6 +88,7 @@ pnpm run start:dev
 ## 🗺️ Project Roadmap
 
 ### Phase 0 — Foundation & Cleanup
+
 **Status:** Completed ✅
 
 Make the repository internally consistent before adding features.
@@ -104,6 +106,7 @@ Make the repository internally consistent before adding features.
 ---
 
 ### Phase 1 — Domain Core
+
 **Status:** Completed ✅
 
 Build a coherent, framework-independent Payment domain model.
@@ -120,6 +123,7 @@ Build a coherent, framework-independent Payment domain model.
 ---
 
 ### Phase 2 — Application Core & Ports
+
 **Status:** Completed ✅
 
 Define application contracts and complete use case orchestration.
@@ -132,10 +136,10 @@ Define application contracts and complete use case orchestration.
 
 **Done when:** Use cases are testable with mocked ports. No unsafe type casts. Use cases return DTOs.
 
-
 ---
 
 ### Phase 3 — Persistence & Core Flows
+
 **Status:** Completed ✅
 
 Implement database layer and complete vertical slice.
@@ -152,6 +156,7 @@ Implement database layer and complete vertical slice.
 ---
 
 ### Phase 4 — Payment Provider Integration
+
 **Status:** Completed ✅
 
 Implement Stripe adapter.
@@ -166,22 +171,23 @@ Implement Stripe adapter.
 ---
 
 ### Phase 5 — HTTP API & Webhooks
+
 **Status:** Not Started
 
 Expose functionality via REST API.
 
-- [ ] Payment controller (create, get)
-- [ ] Request validation DTOs
-- [ ] Domain exception → HTTP response filter
-- [ ] Webhook controller (Stripe)
-- [ ] NestJS module wiring + Swagger
-- [ ] Authentication boundary decision
+- [x] Payment controller (create, get)
+- [x] Request validation DTOs
+- [x] Domain exception → HTTP response filter
+- [x] Webhook controller (Stripe)
+- [x] NestJS module wiring + Swagger
 
 **Done when:** `POST /api/v1/payments` works end-to-end via HTTP.
 
 ---
 
 ### Phase 6 — Production Reliability
+
 **Status:** Not Started
 
 Harden for production. Each pattern must be justified.
@@ -192,12 +198,14 @@ Harden for production. Each pattern must be justified.
 - [ ] Structured logging
 - [ ] Rate limiting
 - [ ] Error response hardening
+- [ ] API Key Authentication + Tenant identification + Scopes
 
 **Done when:** E2E tests pass. System is deployable to staging.
 
 ---
 
 ### Phase 7 — Messaging & Distributed Capabilities
+
 **Status:** Not Started — Future / As Needed
 
 > Not required for the first working version.
@@ -214,11 +222,11 @@ Harden for production. Each pattern must be justified.
 
 ## Documentation
 
-| Document | Description |
-|:---|:---|
+| Document                                                                     | Description                                                                                                          |
+| :--------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
 | [`docs/documentation/ARCHITECTURE.md`](./docs/documentation/ARCHITECTURE.md) | Detailed architecture, layer rules, domain model, payment flow, problems, decisions, full roadmap with exit criteria |
-| [`docs/API.md`](./docs/API.md) | API endpoint reference (planned — not yet implemented) |
-| [`docs/details/DATABASE.md`](./docs/details/DATABASE.md) | Database schema documentation (planned) |
+| [`docs/API.md`](./docs/API.md)                                               | API endpoint reference (planned — not yet implemented)                                                               |
+| [`docs/details/DATABASE.md`](./docs/details/DATABASE.md)                     | Database schema documentation (planned)                                                                              |
 
 ---
 
