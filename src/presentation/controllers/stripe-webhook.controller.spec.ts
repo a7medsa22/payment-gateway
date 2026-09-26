@@ -92,6 +92,7 @@ describe('StripeWebhookController', () => {
     it('should handle payment_intent.succeeded and transition payment to SUCCEEDED', async () => {
       const payment = Payment.create({
         id: 'pay-uuid-1',
+        merchantId: 'merchant_webhook',
         userId: 'usr_1',
         amount: Money.from('100.00', 'USD'),
         provider: PaymentProvider.STRIPE,
@@ -126,6 +127,7 @@ describe('StripeWebhookController', () => {
     it('should be idempotent if payment is already in SUCCEEDED state', async () => {
       const payment = Payment.create({
         id: 'pay-uuid-2',
+        merchantId: 'merchant_webhook',
         userId: 'usr_1',
         amount: Money.from('100.00', 'USD'),
         provider: PaymentProvider.STRIPE,
@@ -160,6 +162,7 @@ describe('StripeWebhookController', () => {
     it('should handle payment_intent.payment_failed and transition payment to FAILED', async () => {
       const payment = Payment.create({
         id: 'pay-uuid-3',
+        merchantId: 'merchant_webhook',
         userId: 'usr_1',
         amount: Money.from('100.00', 'USD'),
         provider: PaymentProvider.STRIPE,

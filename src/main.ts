@@ -35,6 +35,11 @@ async function bootstrap() {
       'Production-grade Payment Microservice following Clean Architecture & DDD',
     )
     .setVersion('1.0')
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      description: 'Merchant secret API key (sk_live_xxx)',
+    })
     .addTag('Payments', 'Payment processing and lifecycle operations')
     .addTag('Webhooks', 'Provider webhook event ingestion')
     .build();

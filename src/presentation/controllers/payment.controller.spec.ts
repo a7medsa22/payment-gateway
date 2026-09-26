@@ -5,12 +5,19 @@ import { RefundPaymentUseCase } from '@application/use-cases/refund-payment/refu
 import { PaymentProvider, PaymentStatus } from '@domain/enums';
 import { CreatePaymentRequestDto } from '../dtos/create-payment.request.dto';
 import { RefundPaymentRequestDto } from '../dtos/refund-payment.request.dto';
+import { MerchantContext } from '@infrastructure/auth/repositories/api-key.repository';
 
 describe('PaymentController', () => {
   let controller: PaymentController;
   let mockCreateUseCase: jest.Mocked<CreatePaymentUseCase>;
   let mockGetUseCase: jest.Mocked<GetPaymentUseCase>;
   let mockRefundUseCase: jest.Mocked<RefundPaymentUseCase>;
+
+  const mockMerchant: MerchantContext = {
+    merchantId: 'mch_123',
+    merchantName: 'Test Store',
+    scopes: ['payments:create', 'payments:read', 'payments:refund'],
+  };
 
   beforeEach(() => {
     mockCreateUseCase = {
@@ -44,6 +51,7 @@ describe('PaymentController', () => {
 
       const expectedResult = {
         id: 'pay_123',
+        merchantId: 'mch_123',
         userId: 'usr_123',
         amount: '100.00',
         currency: 'USD',
@@ -56,10 +64,11 @@ describe('PaymentController', () => {
 
       mockCreateUseCase.execute.mockResolvedValue(expectedResult);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(mockMerchant, dto);
 
       expect(result).toBe(expectedResult);
       expect(mockCreateUseCase.execute).toHaveBeenCalledWith({
+        merchantId: 'mch_123',
         userId: 'usr_123',
         amount: '100.00',
         currency: 'USD',
@@ -73,6 +82,7 @@ describe('PaymentController', () => {
     it('should delegate to GetPaymentUseCase and return payment detail', async () => {
       const expectedDetail = {
         id: 'pay_123',
+        merchantId: 'mch_123',
         userId: 'usr_123',
         amount: '100.00',
         currency: 'USD',
@@ -88,10 +98,10 @@ describe('PaymentController', () => {
 
       mockGetUseCase.execute.mockResolvedValue(expectedDetail);
 
-      const result = await controller.findOne('pay_123', 'usr_123');
+      const result = await controller.findOne(mockMerchant, 'pay_123');
 
       expect(result).toBe(expectedDetail);
-      expect(mockGetUseCase.execute).toHaveBeenCalledWith('pay_123', 'usr_123');
+      expect(mockGetUseCase.execute).toHaveBeenCalledWith('pay_123', 'mch_123');
     });
   });
 
@@ -116,11 +126,12 @@ describe('PaymentController', () => {
 
       mockRefundUseCase.execute.mockResolvedValue(expectedResult);
 
-      const result = await controller.refund('pay_123', refundDto);
+      const result = await controller.refund(mockMerchant, 'pay_123', refundDto);
 
       expect(result).toBe(expectedResult);
       expect(mockRefundUseCase.execute).toHaveBeenCalledWith({
         paymentId: 'pay_123',
+        merchantId: 'mch_123',
         userId: 'usr_123',
         amount: '50.00',
         currency: 'USD',
