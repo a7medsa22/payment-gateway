@@ -15,6 +15,7 @@ import { Transaction } from '@domain/entities/transaction.entity';
 
 export interface PaymentProps {
   id: string;
+  merchantId: string;
   userId: string;
   amount: Money;
   status: PaymentStatus;
@@ -57,6 +58,7 @@ type PaymentCtorProps = PaymentProps & { createdAt: Date; updatedAt: Date };
  */
 export class Payment {
   private readonly _id: string;
+  private readonly _merchantId: string;
   private readonly _userId: string;
   private _amount: Money;
   private _status: PaymentStatus;
@@ -78,6 +80,7 @@ export class Payment {
 
   private constructor(props: PaymentCtorProps, clock: Clock) {
     this._id = props.id;
+    this._merchantId = props.merchantId;
     this._clock = clock;
     this._userId = props.userId;
     this._amount = props.amount;
@@ -102,6 +105,7 @@ export class Payment {
     props: Omit<PaymentProps, 'status' | 'createdAt' | 'updatedAt'>,
     clock: Clock = systemClock,
   ): Payment {
+    if (!props.merchantId) throw new DomainException('MerchantId is required');
     if (!props.userId) throw new DomainException('UserId is required');
     if (!props.provider)
       throw new DomainException('Payment provider is required');
@@ -138,6 +142,10 @@ export class Payment {
   // Getters
   get id(): string {
     return this._id;
+  }
+
+  get merchantId(): string {
+    return this._merchantId;
   }
 
   get userId(): string {

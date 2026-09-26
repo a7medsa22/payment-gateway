@@ -22,6 +22,7 @@ describe('Payment Aggregate', () => {
     return Payment.create(
       {
         id: 'pay_test_123',
+        merchantId: 'merchant_test_123',
         userId: 'user_test_456',
         amount: Money.from('100.00', 'USD'),
         provider: PaymentProvider.STRIPE,
@@ -37,6 +38,7 @@ describe('Payment Aggregate', () => {
       const payment = createTestPayment();
 
       expect(payment.id).toBe('pay_test_123');
+      expect(payment.merchantId).toBe('merchant_test_123');
       expect(payment.userId).toBe('user_test_456');
       expect(payment.amount.amount).toBe('100.0000');
       expect(payment.provider).toBe(PaymentProvider.STRIPE);
@@ -46,11 +48,27 @@ describe('Payment Aggregate', () => {
       expect(payment.updatedAt).toEqual(fixedDate);
     });
 
+    it('should throw DomainException when merchantId is empty', () => {
+      expect(() =>
+        Payment.create(
+          {
+            id: 'pay_1',
+            merchantId: '',
+            userId: 'user_1',
+            amount: Money.from('10.00', 'USD'),
+            provider: PaymentProvider.STRIPE,
+          },
+          fixedClock,
+        ),
+      ).toThrow('MerchantId is required');
+    });
+
     it('should throw DomainException if userId is missing', () => {
       expect(() =>
         Payment.create(
           {
             id: 'pay_1',
+            merchantId: 'merchant_1',
             userId: '',
             amount: Money.from('10.00', 'USD'),
             provider: PaymentProvider.STRIPE,
@@ -65,6 +83,7 @@ describe('Payment Aggregate', () => {
         Payment.create(
           {
             id: 'pay_1',
+            merchantId: 'merchant_1',
             userId: 'user_1',
             amount: Money.from('10.00', 'USD'),
             provider: undefined as unknown as PaymentProvider,
@@ -217,6 +236,7 @@ describe('Payment Aggregate', () => {
       const payment = Payment.reconstitute(
         {
           id: 'pay_recon_1',
+          merchantId: 'merchant_recon_1',
           userId: 'user_1',
           amount: Money.from('250.00', 'EUR'),
           status: PaymentStatus.SUCCEEDED,
@@ -228,6 +248,7 @@ describe('Payment Aggregate', () => {
       );
 
       expect(payment.id).toBe('pay_recon_1');
+      expect(payment.merchantId).toBe('merchant_recon_1');
       expect(payment.status).toBe(PaymentStatus.SUCCEEDED);
       expect(payment.provider).toBe(PaymentProvider.PAYMOB);
       expect(payment.amount.currency).toBe('EUR');
@@ -257,6 +278,7 @@ describe('Payment Aggregate', () => {
       const payment = Payment.create(
         {
           id: 'pay_succ_1',
+          merchantId: 'merchant_1',
           userId: 'user_1',
           amount: Money.from(amount, currency),
           provider: PaymentProvider.STRIPE,
@@ -309,6 +331,7 @@ describe('Payment Aggregate', () => {
       const payment = Payment.create(
         {
           id: 'pay_dyn_1',
+          merchantId: 'merchant_1',
           userId: 'user_1',
           amount: Money.from('100.00', 'USD'),
           provider: PaymentProvider.STRIPE,
