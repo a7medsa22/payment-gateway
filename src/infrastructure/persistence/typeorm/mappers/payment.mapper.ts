@@ -21,6 +21,7 @@ export class PaymentMapper {
   static toPersistence(payment: Payment): PersistenceResult {
     const paymentSchema = new PaymentSchema();
     paymentSchema.id = payment.id;
+    paymentSchema.merchantId = payment.merchantId;
     paymentSchema.userId = payment.userId;
     paymentSchema.amount = payment.amount.amount;
     paymentSchema.currency = payment.amount.currency;
@@ -87,6 +88,7 @@ export class PaymentMapper {
 
     return Payment.reconstitute({
       id: paymentSchema.id,
+      merchantId: paymentSchema.merchantId,
       userId: paymentSchema.userId,
       amount: Money.from(
         paymentSchema.amount,

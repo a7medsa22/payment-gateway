@@ -19,6 +19,7 @@ describe('PaymentMapper', () => {
       const payment = Payment.create(
         {
           id: 'pay-123',
+          merchantId: 'merchant-123',
           userId: 'user-456',
           amount: Money.from('150.50', 'USD'),
           provider: PaymentProvider.STRIPE,
@@ -36,6 +37,7 @@ describe('PaymentMapper', () => {
         PaymentMapper.toPersistence(payment);
 
       expect(paymentSchema.id).toBe('pay-123');
+      expect(paymentSchema.merchantId).toBe('merchant-123');
       expect(paymentSchema.userId).toBe('user-456');
       expect(paymentSchema.amount).toBe('150.5000');
       expect(paymentSchema.currency).toBe('USD');
@@ -73,6 +75,7 @@ describe('PaymentMapper', () => {
     it('should correctly reconstruct a Payment aggregate from schemas', () => {
       const paymentSchema = new PaymentSchema();
       paymentSchema.id = 'pay-999';
+      paymentSchema.merchantId = 'merchant-999';
       paymentSchema.userId = 'user-888';
       paymentSchema.amount = '200.0000';
       paymentSchema.currency = 'EUR';
@@ -102,6 +105,7 @@ describe('PaymentMapper', () => {
       const payment = PaymentMapper.toDomain(paymentSchema, [txSchema]);
 
       expect(payment.id).toBe('pay-999');
+      expect(payment.merchantId).toBe('merchant-999');
       expect(payment.userId).toBe('user-888');
       expect(payment.amount.amount).toBe('200.0000');
       expect(payment.amount.currency).toBe('EUR');
@@ -117,6 +121,7 @@ describe('PaymentMapper', () => {
     it('should handle optional timestamps and failure fields gracefully', () => {
       const paymentSchema = new PaymentSchema();
       paymentSchema.id = 'pay-fail';
+      paymentSchema.merchantId = 'merchant-fail';
       paymentSchema.userId = 'user-1';
       paymentSchema.amount = '50.0000';
       paymentSchema.currency = 'USD';
@@ -131,6 +136,7 @@ describe('PaymentMapper', () => {
       const payment = PaymentMapper.toDomain(paymentSchema, []);
 
       expect(payment.status).toBe(PaymentStatus.FAILED);
+      expect(payment.merchantId).toBe('merchant-fail');
       expect(payment.errorCode).toBe('card_declined');
       expect(payment.failureReason).toBe(FailureReason.CARD_DECLINED);
       expect(payment.failedAt).toEqual(fixedDate);
@@ -143,6 +149,7 @@ describe('PaymentMapper', () => {
     it('should preserve all domain aggregate properties across domain -> persistence -> domain', () => {
       const originalPayment = Payment.create({
         id: 'pay-roundtrip-1',
+        merchantId: 'merchant-roundtrip-1',
         userId: 'user-rt',
         amount: Money.from('350.75', 'USD'),
         provider: PaymentProvider.STRIPE,
@@ -161,6 +168,7 @@ describe('PaymentMapper', () => {
       );
 
       expect(reconstructedPayment.id).toBe(originalPayment.id);
+      expect(reconstructedPayment.merchantId).toBe(originalPayment.merchantId);
       expect(reconstructedPayment.userId).toBe(originalPayment.userId);
       expect(reconstructedPayment.amount.equals(originalPayment.amount)).toBe(
         true,

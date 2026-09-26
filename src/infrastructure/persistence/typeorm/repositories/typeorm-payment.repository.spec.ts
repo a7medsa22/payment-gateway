@@ -43,6 +43,7 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
     it('should save payment and child transactions inside a database transaction', () => {
       const payment = Payment.create({
         id: 'pay-unit-1',
+        merchantId: 'merchant-unit-1',
         userId: 'user-unit-1',
         amount: Money.from('100.00', 'USD'),
         provider: PaymentProvider.STRIPE,
@@ -71,6 +72,7 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
     it('should not call transaction save for transactions if payment has no transactions', () => {
       const payment = Payment.create({
         id: 'pay-no-tx',
+        merchantId: 'merchant-unit-1',
         userId: 'user-unit-1',
         amount: Money.from('100.00', 'USD'),
         provider: PaymentProvider.STRIPE,
@@ -91,6 +93,7 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
 
       const payment = Payment.create({
         id: 'pay-fail-tx',
+        merchantId: 'merchant-unit-1',
         userId: 'user-unit-1',
         amount: Money.from('100.00', 'USD'),
         provider: PaymentProvider.STRIPE,
@@ -115,6 +118,7 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
     it('should find payment and its child transactions ordered by createdAt ASC', async () => {
       const paymentSchema = new PaymentSchema();
       paymentSchema.id = 'pay-found-1';
+      paymentSchema.merchantId = 'merchant-unit-1';
       paymentSchema.userId = 'user-1';
       paymentSchema.amount = '100.0000';
       paymentSchema.currency = 'USD';
@@ -161,6 +165,7 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
     it('should find payment by providerPaymentId and load its transactions', async () => {
       const paymentSchema = new PaymentSchema();
       paymentSchema.id = 'pay-found-2';
+      paymentSchema.merchantId = 'merchant-unit-1';
       paymentSchema.userId = 'user-2';
       paymentSchema.amount = '50.0000';
       paymentSchema.currency = 'USD';

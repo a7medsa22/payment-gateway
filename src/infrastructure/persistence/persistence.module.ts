@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PaymentSchema } from './typeorm/schemas/payment.schema';
 import { TransactionSchema } from './typeorm/schemas/transaction.schema';
 import { WebhookEventSchema } from './typeorm/schemas/webhook-event.schema';
+import { ApiKeySchema } from '../auth/schemas/api-key.schema';
 import { TypeOrmPaymentRepository } from './typeorm/repositories/typeorm-payment.repository';
 import { TypeOrmWebhookEventRepository } from './typeorm/repositories/typeorm-webhook-event.repository';
 
@@ -14,7 +15,12 @@ import { TypeOrmWebhookEventRepository } from './typeorm/repositories/typeorm-we
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         ...config.get('database'),
-        entities: [PaymentSchema, TransactionSchema, WebhookEventSchema],
+        entities: [
+          PaymentSchema,
+          TransactionSchema,
+          WebhookEventSchema,
+          ApiKeySchema,
+        ],
       }),
     }),
     TypeOrmModule.forFeature([

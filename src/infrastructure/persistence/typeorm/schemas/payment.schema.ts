@@ -18,6 +18,10 @@ export class PaymentSchema {
   @PrimaryColumn('uuid')
   id!: string;
 
+  @Column({ name: 'merchant_id', type: 'varchar', length: 100 })
+  @Index('idx_payments_merchant_id')
+  merchantId!: string;
+
   @Column({ name: 'user_id', type: 'varchar', length: 255 })
   userId!: string;
 

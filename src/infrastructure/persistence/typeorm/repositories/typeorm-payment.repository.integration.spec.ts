@@ -68,6 +68,7 @@ describe('TypeOrmPaymentRepository (Integration)', () => {
     const id = crypto.randomUUID();
     const payment = Payment.create({
       id,
+      merchantId: 'merchant-integ-1',
       userId: 'user-integ-1',
       amount: Money.from('200.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -93,6 +94,7 @@ describe('TypeOrmPaymentRepository (Integration)', () => {
     const id = crypto.randomUUID();
     const payment = Payment.create({
       id,
+      merchantId: 'merchant-integ-1',
       userId: 'user-integ-2',
       amount: Money.from('150.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -118,6 +120,7 @@ describe('TypeOrmPaymentRepository (Integration)', () => {
     const id = crypto.randomUUID();
     const payment = Payment.create({
       id,
+      merchantId: 'merchant-integ-1',
       userId: 'user-integ-3',
       amount: Money.from('75.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -138,6 +141,7 @@ describe('TypeOrmPaymentRepository (Integration)', () => {
     const id = crypto.randomUUID();
     const payment = Payment.create({
       id,
+      merchantId: 'merchant-integ-1',
       userId: 'user-integ-4',
       amount: Money.from('100.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -163,6 +167,7 @@ describe('TypeOrmPaymentRepository (Integration)', () => {
     const id = crypto.randomUUID();
     const payment = Payment.create({
       id,
+      merchantId: 'merchant-integ-1',
       userId: 'user-atomicity',
       amount: Money.from('100.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -196,6 +201,7 @@ describe('TypeOrmPaymentRepository (Integration)', () => {
     const id = crypto.randomUUID();
     const payment = Payment.create({
       id,
+      merchantId: 'merchant-integ-1',
       userId: 'user-order',
       amount: Money.from('100.00', 'USD'),
       provider: PaymentProvider.STRIPE,
