@@ -45,6 +45,7 @@ describe('CreatePaymentUseCase', () => {
     mockPaymentGateway.createPayment.mockResolvedValueOnce(gatewayResult);
 
     const result = await useCase.execute({
+      merchantId: 'merchant_123',
       userId: 'user_123',
       amount: '100.00',
       currency: 'USD',
@@ -65,10 +66,12 @@ describe('CreatePaymentUseCase', () => {
     expect(mockPaymentRepository.save).toHaveBeenCalledTimes(1);
     const savedPayment: Payment = mockPaymentRepository.save.mock.calls[0][0];
     expect(savedPayment.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(savedPayment.merchantId).toBe('merchant_123');
     expect(savedPayment.transactions).toHaveLength(1);
 
     expect(result).toEqual({
       id: savedPayment.id,
+      merchantId: 'merchant_123',
       userId: 'user_123',
       amount: '100.0000',
       currency: 'USD',
@@ -89,6 +92,7 @@ describe('CreatePaymentUseCase', () => {
     mockPaymentGateway.createPayment.mockResolvedValueOnce(gatewayResult);
 
     const result = await useCase.execute({
+      merchantId: 'merchant_123',
       userId: 'user_456',
       amount: '50.00',
       currency: 'EUR',
@@ -102,6 +106,7 @@ describe('CreatePaymentUseCase', () => {
 
     const savedPayment: Payment = mockPaymentRepository.save.mock.calls[0][0];
     expect(savedPayment.status).toBe(PaymentStatus.PENDING);
+    expect(savedPayment.merchantId).toBe('merchant_123');
     expect(savedPayment.transactions).toHaveLength(0);
   });
 
@@ -113,6 +118,7 @@ describe('CreatePaymentUseCase', () => {
     mockPaymentGateway.createPayment.mockResolvedValueOnce(gatewayResult);
 
     const result = await useCase.execute({
+      merchantId: 'merchant_123',
       userId: 'user_789',
       amount: '20.00',
       currency: 'USD',
@@ -123,12 +129,14 @@ describe('CreatePaymentUseCase', () => {
 
     const savedPayment: Payment = mockPaymentRepository.save.mock.calls[0][0];
     expect(savedPayment.status).toBe(PaymentStatus.FAILED);
+    expect(savedPayment.merchantId).toBe('merchant_123');
     expect(savedPayment.errorCode).toBe('provider_rejected');
   });
 
   it('should throw DomainException for unsupported currency', async () => {
     await expect(
       useCase.execute({
+        merchantId: 'merchant_123',
         userId: 'user_123',
         amount: '100.00',
         currency: 'INVALID_CURRENCY',
@@ -143,6 +151,7 @@ describe('CreatePaymentUseCase', () => {
   it('should throw DomainException for unsupported provider', async () => {
     await expect(
       useCase.execute({
+        merchantId: 'merchant_123',
         userId: 'user_123',
         amount: '100.00',
         currency: 'USD',
@@ -165,6 +174,7 @@ describe('CreatePaymentUseCase', () => {
 
     await expect(
       useCase.execute({
+        merchantId: 'merchant_123',
         userId: 'user_123',
         amount: '10.00',
         currency: 'USD',

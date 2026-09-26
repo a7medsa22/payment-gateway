@@ -25,6 +25,7 @@ describe('RefundPaymentUseCase', () => {
   function createSucceededPayment(): Payment {
     const payment = Payment.create({
       id: 'pay-test-1',
+      merchantId: 'merchant-1',
       userId: 'user-1',
       amount: Money.from('100.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -40,6 +41,7 @@ describe('RefundPaymentUseCase', () => {
 
     const result = await useCase.execute({
       paymentId: 'pay-test-1',
+      merchantId: 'merchant-1',
       userId: 'user-1',
     });
 
@@ -56,6 +58,7 @@ describe('RefundPaymentUseCase', () => {
 
     const result = await useCase.execute({
       paymentId: 'pay-test-1',
+      merchantId: 'merchant-1',
       userId: 'user-1',
       amount: '40.00',
       reason: 'Customer return',
@@ -72,18 +75,26 @@ describe('RefundPaymentUseCase', () => {
     paymentRepository.findById.mockResolvedValue(null);
 
     await expect(
-      useCase.execute({ paymentId: 'non-existent', userId: 'user-1' }),
+      useCase.execute({
+        paymentId: 'non-existent',
+        merchantId: 'merchant-1',
+        userId: 'user-1',
+      }),
     ).rejects.toThrow(PaymentNotFoundException);
 
     expect(paymentRepository.save).not.toHaveBeenCalled();
   });
 
-  it('should throw ForbiddenAccessException when userId does not own the payment', async () => {
-    const payment = createSucceededPayment(); // userId = 'user-1'
+  it('should throw ForbiddenAccessException when merchantId does not own the payment', async () => {
+    const payment = createSucceededPayment(); // merchantId = 'merchant-1'
     paymentRepository.findById.mockResolvedValue(payment);
 
     await expect(
-      useCase.execute({ paymentId: 'pay-test-1', userId: 'attacker-user' }),
+      useCase.execute({
+        paymentId: 'pay-test-1',
+        merchantId: 'attacker-merchant',
+        userId: 'user-1',
+      }),
     ).rejects.toThrow(ForbiddenAccessException);
 
     expect(paymentRepository.save).not.toHaveBeenCalled();
@@ -92,6 +103,7 @@ describe('RefundPaymentUseCase', () => {
   it('should propagate DomainException when domain invariants are violated', async () => {
     const payment = Payment.create({
       id: 'pay-created',
+      merchantId: 'merchant-1',
       userId: 'user-1',
       amount: Money.from('100.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -99,7 +111,11 @@ describe('RefundPaymentUseCase', () => {
     paymentRepository.findById.mockResolvedValue(payment);
 
     await expect(
-      useCase.execute({ paymentId: 'pay-created', userId: 'user-1' }),
+      useCase.execute({
+        paymentId: 'pay-created',
+        merchantId: 'merchant-1',
+        userId: 'user-1',
+      }),
     ).rejects.toThrow(DomainException);
 
     expect(paymentRepository.save).not.toHaveBeenCalled();

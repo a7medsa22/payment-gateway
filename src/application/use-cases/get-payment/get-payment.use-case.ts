@@ -6,7 +6,7 @@ import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.ex
 export class GetPaymentUseCase {
   constructor(private readonly paymentRepository: PaymentRepository) {}
 
-  async execute(paymentId: string, userId: string): Promise<PaymentDetailDto> {
+  async execute(paymentId: string, merchantId: string): Promise<PaymentDetailDto> {
     const payment = await this.paymentRepository.findById(paymentId);
 
     if (!payment) {
@@ -15,7 +15,7 @@ export class GetPaymentUseCase {
       );
     }
 
-    if (payment.userId !== userId) {
+    if (payment.merchantId !== merchantId) {
       throw new ForbiddenAccessException(
         'You do not have permission to access this payment',
       );
@@ -23,6 +23,7 @@ export class GetPaymentUseCase {
 
     return {
       id: payment.id,
+      merchantId: payment.merchantId,
       userId: payment.userId,
       amount: payment.amount.amount,
       currency: payment.amount.currency,

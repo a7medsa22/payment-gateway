@@ -19,7 +19,7 @@ export class RefundPaymentUseCase {
       );
     }
 
-    if (payment.userId !== input.userId) {
+    if (payment.merchantId !== input.merchantId) {
       throw new ForbiddenAccessException(
         'You do not have permission to refund this payment',
       );

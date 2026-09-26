@@ -15,6 +15,7 @@ export interface TransactionDto {
 
 export interface PaymentDetailDto {
   id: string;
+  merchantId: string;
   userId: string;
   amount: string;
   currency: string;

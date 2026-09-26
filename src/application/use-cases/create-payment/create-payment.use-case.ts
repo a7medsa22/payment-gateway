@@ -26,6 +26,7 @@ export class CreatePaymentUseCase {
     const id = crypto.randomUUID();
     const payment = Payment.create({
       id,
+      merchantId: input.merchantId,
       userId: input.userId,
       amount: money,
       provider,
@@ -57,6 +58,7 @@ export class CreatePaymentUseCase {
     // 7. Return application DTO
     return {
       id: payment.id,
+      merchantId: payment.merchantId,
       userId: payment.userId,
       amount: payment.amount.amount,
       currency: payment.amount.currency,

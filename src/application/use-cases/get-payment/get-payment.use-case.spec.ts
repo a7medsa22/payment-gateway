@@ -24,6 +24,7 @@ describe('GetPaymentUseCase', () => {
   it('should return detailed payment DTO when payment exists', async () => {
     const payment = Payment.create({
       id: 'pay-get-1',
+      merchantId: 'merchant-get-1',
       userId: 'user-get-1',
       amount: Money.from('250.00', 'USD'),
       provider: PaymentProvider.STRIPE,
@@ -35,9 +36,10 @@ describe('GetPaymentUseCase', () => {
 
     paymentRepository.findById.mockResolvedValue(payment);
 
-    const result = await useCase.execute('pay-get-1', 'user-get-1');
+    const result = await useCase.execute('pay-get-1', 'merchant-get-1');
 
     expect(result.id).toBe('pay-get-1');
+    expect(result.merchantId).toBe('merchant-get-1');
     expect(result.userId).toBe('user-get-1');
     expect(result.amount).toBe('250.0000');
     expect(result.currency).toBe('USD');
@@ -54,21 +56,22 @@ describe('GetPaymentUseCase', () => {
   it('should throw PaymentNotFoundException when payment does not exist', async () => {
     paymentRepository.findById.mockResolvedValue(null);
 
-    await expect(useCase.execute('non-existent', 'user-get-1')).rejects.toThrow(
+    await expect(useCase.execute('non-existent', 'merchant-get-1')).rejects.toThrow(
       PaymentNotFoundException,
     );
   });
 
-  it('should throw ForbiddenAccessException when userId does not match payment owner', async () => {
+  it('should throw ForbiddenAccessException when merchantId does not match payment owner', async () => {
     const payment = Payment.create({
       id: 'pay-get-2',
+      merchantId: 'owner-merchant',
       userId: 'owner-user',
       amount: Money.from('100.00', 'USD'),
       provider: PaymentProvider.STRIPE,
     });
     paymentRepository.findById.mockResolvedValue(payment);
 
-    await expect(useCase.execute('pay-get-2', 'other-user')).rejects.toThrow(
+    await expect(useCase.execute('pay-get-2', 'other-merchant')).rejects.toThrow(
       ForbiddenAccessException,
     );
   });

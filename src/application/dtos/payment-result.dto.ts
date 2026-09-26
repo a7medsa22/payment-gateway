@@ -1,5 +1,6 @@
 export interface PaymentResultDto {
   id: string;
+  merchantId: string;
   userId: string;
   amount: string;
   currency: string;
