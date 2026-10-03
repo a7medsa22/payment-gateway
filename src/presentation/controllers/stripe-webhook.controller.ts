@@ -104,8 +104,8 @@ export class StripeWebhookController {
       return { received: true, status: 'already_processed' };
     }
 
-    // Persist incoming event record
-    await this.webhookEventRepository.record({
+    // Persist incoming event record atomically (prevents concurrent insertion race)
+    const recorded = await this.webhookEventRepository.record({
       id: crypto.randomUUID(),
       eventId: event.id,
       provider: 'STRIPE',
@@ -113,6 +113,13 @@ export class StripeWebhookController {
       status: WebhookEventStatus.RECEIVED,
       payload: event.data.object as Record<string, unknown>,
     });
+
+    if (!recorded) {
+      this.logger.log(
+        `Stripe webhook event ${event.id} already processed concurrently. Skipping.`,
+      );
+      return { received: true, status: 'already_processed' };
+    }
 
     // Handle supported events
     let resultStatus = 'ignored';

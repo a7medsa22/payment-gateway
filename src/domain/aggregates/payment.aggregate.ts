@@ -77,6 +77,7 @@ export class Payment {
   private readonly _createdAt: Date;
   private _updatedAt: Date;
   private readonly _clock: Clock;
+  private readonly _version?: number;
 
   private constructor(props: PaymentCtorProps, clock: Clock) {
     this._id = props.id;
@@ -99,6 +100,7 @@ export class Payment {
     this._refundedAt = props.refundedAt;
     this._createdAt = props.createdAt;
     this._updatedAt = props.updatedAt;
+    this._version = props.version;
   }
 
   static create(
@@ -252,6 +254,18 @@ export class Payment {
     return this._updatedAt;
   }
 
+  get version(): number | undefined {
+    return this._version;
+  }
+
+  setProviderPaymentId(providerPaymentId: string): void {
+    if (!providerPaymentId) {
+      throw new DomainException('Provider payment ID cannot be empty');
+    }
+    this._providerPaymentId = providerPaymentId;
+    this._updatedAt = this._clock.now();
+  }
+
   // Business Logic Methods
 
   start(): void {
@@ -280,6 +294,9 @@ export class Payment {
     );
 
     this._status = PaymentStatus.SUCCEEDED;
+    if (providerTransactionId) {
+      this._providerPaymentId = providerTransactionId;
+    }
     const now = this._clock.now();
     this._succeededAt = now;
     this._updatedAt = now;
@@ -351,7 +368,11 @@ export class Payment {
     this._updatedAt = now;
   }
 
-  refund(refundAmount?: Money, reason?: string): void {
+  refund(
+    refundAmount?: Money,
+    reason?: string,
+    providerRefundId?: string,
+  ): void {
     if (
       this._status !== PaymentStatus.SUCCEEDED &&
       this._status !== PaymentStatus.PARTIALLY_REFUNDED
@@ -404,6 +425,7 @@ export class Payment {
         status: TransactionStatus.SUCCEEDED,
         amount: effectiveAmount,
         provider: this._provider,
+        providerTransactionId: providerRefundId,
         description: reason ?? (isFullRefund ? 'Full refund' : 'Partial refund'),
         processedAt: now,
       },

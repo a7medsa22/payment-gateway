@@ -39,6 +39,9 @@ export class PaymentMapper {
     paymentSchema.expiredAt = payment.expiredAt;
     paymentSchema.createdAt = payment.createdAt;
     paymentSchema.updatedAt = payment.updatedAt;
+    if (payment.version !== undefined) {
+      paymentSchema.version = payment.version;
+    }
 
     const transactionSchemas = payment.transactions.map((tx) => {
       const txSchema = new TransactionSchema();

@@ -32,7 +32,7 @@ describe('StripeWebhookController', () => {
 
     mockWebhookEventRepo = {
       exists: jest.fn().mockResolvedValue(false),
-      record: jest.fn().mockResolvedValue(undefined),
+      record: jest.fn().mockResolvedValue(true),
       markProcessed: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<WebhookEventRepository>;
 
@@ -86,6 +86,26 @@ describe('StripeWebhookController', () => {
 
       expect(result).toEqual({ received: true, status: 'already_processed' });
       expect(mockWebhookEventRepo.exists).toHaveBeenCalledWith('STRIPE', 'evt_duplicate_1');
+      expect(mockPaymentRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('should return already_processed if record returns false (concurrent race)', async () => {
+      const mockEvent: Stripe.Event = {
+        id: 'evt_concurrent_1',
+        type: 'payment_intent.succeeded',
+        data: { object: { id: 'pi_123' } },
+      } as any;
+
+      (mockStripe.webhooks.constructEvent as jest.Mock).mockReturnValue(mockEvent);
+      mockWebhookEventRepo.exists.mockResolvedValue(false);
+      mockWebhookEventRepo.record.mockResolvedValue(false);
+
+      const result = await controller.handleStripeWebhook(
+        'sig_valid',
+        Buffer.from('payload'),
+      );
+
+      expect(result).toEqual({ received: true, status: 'already_processed' });
       expect(mockPaymentRepo.save).not.toHaveBeenCalled();
     });
 

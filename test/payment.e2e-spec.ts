@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as supertest from 'supertest';
 const request = (supertest as any).default || supertest;
 import { PaymentController } from '../src/presentation/controllers/payment.controller';
 import { StripeWebhookController } from '../src/presentation/controllers/stripe-webhook.controller';
 import { HttpExceptionFilter } from '../src/presentation/filters/http-exception.filter';
+import { ApiKeyGuard, MERCHANT_CONTEXT_KEY } from '../src/presentation/guards/api-key.guard';
+import { ScopeGuard } from '../src/presentation/guards/scope.guard';
 import { PaymentRepository } from '@application/ports/payment.repository';
 import {
   WebhookEventRecord,
@@ -50,8 +52,13 @@ class InMemoryWebhookEventRepository implements WebhookEventRepository {
     return this.recorded.has(`${provider}:${eventId}`);
   }
 
-  async record(event: WebhookEventRecord): Promise<void> {
-    this.recorded.set(`${event.provider}:${event.eventId}`, event);
+  async record(event: WebhookEventRecord): Promise<boolean> {
+    const key = `${event.provider}:${event.eventId}`;
+    if (this.recorded.has(key)) {
+      return false;
+    }
+    this.recorded.set(key, event);
+    return true;
   }
 
   async markProcessed(provider: string, eventId: string): Promise<void> {
@@ -80,6 +87,10 @@ describe('Payment Gateway HTTP API (e2e)', () => {
         providerPaymentId: `pi_test_${req.paymentId}`,
         status: 'pending',
         clientSecret: `pi_test_${req.paymentId}_secret`,
+      })),
+      refundPayment: jest.fn().mockImplementation(async (req) => ({
+        providerRefundId: `re_test_${req.paymentId}`,
+        status: 'succeeded',
       })),
     };
 
@@ -149,12 +160,29 @@ describe('Payment Gateway HTTP API (e2e)', () => {
         },
         {
           provide: RefundPaymentUseCase,
-          useFactory: (repo: PaymentRepository) =>
-            new RefundPaymentUseCase(repo),
-          inject: ['PaymentRepository'],
+          useFactory: (
+            repo: PaymentRepository,
+            resolver: PaymentGatewayResolver,
+          ) => new RefundPaymentUseCase(repo, resolver),
+          inject: ['PaymentRepository', 'PaymentGatewayResolver'],
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(ApiKeyGuard)
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          const req = context.switchToHttp().getRequest();
+          req[MERCHANT_CONTEXT_KEY] = {
+            merchantId: 'merchant_e2e_1',
+            merchantName: 'E2E Merchant',
+            scopes: ['payments:create', 'payments:read', 'payments:refund'],
+          };
+          return true;
+        },
+      })
+      .overrideGuard(ScopeGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     app = moduleFixture.createNestApplication({ rawBody: true });
 
@@ -309,7 +337,7 @@ describe('Payment Gateway HTTP API (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/payments/${paymentId}/refund`)
-        .send({ amount: '25.00' })
+        .send({ userId: 'user_e2e_refund_fail', amount: '25.00' })
         .expect(422);
 
       expect(res.body).toMatchObject({
@@ -342,7 +370,11 @@ describe('Payment Gateway HTTP API (e2e)', () => {
       // Execute partial refund
       const refundRes = await request(app.getHttpServer())
         .post(`/api/v1/payments/${paymentId}/refund`)
-        .send({ amount: '40.00', reason: 'Customer requested partial refund' })
+        .send({
+          userId: 'user_e2e_refund_ok',
+          amount: '40.00',
+          reason: 'Customer requested partial refund',
+        })
         .expect(200);
 
       expect(refundRes.body).toMatchObject({

@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 import { PaymentSchema } from './schemas/payment.schema';
 import { TransactionSchema } from './schemas/transaction.schema';
 import { WebhookEventSchema } from './schemas/webhook-event.schema';
+import { ApiKeySchema } from '../../auth/schemas/api-key.schema';
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ export default new DataSource({
   username: process.env.DATABASE_USER || 'postgres',
   password: process.env.DATABASE_PASSWORD || 'postgres',
   database: process.env.DATABASE_NAME || 'payment_service',
-  entities: [PaymentSchema, TransactionSchema, WebhookEventSchema],
+  entities: [PaymentSchema, TransactionSchema, WebhookEventSchema, ApiKeySchema],
   migrations: ['src/infrastructure/persistence/typeorm/migrations/*.ts'],
   synchronize: process.env.NODE_ENV !== 'production',
   logging: process.env.NODE_ENV === 'development',

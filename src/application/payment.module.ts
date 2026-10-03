@@ -39,9 +39,11 @@ import { PaymentGatewayResolverImpl } from '@infrastructure/gateways/payment-gat
     },
     {
       provide: RefundPaymentUseCase,
-      useFactory: (paymentRepo: PaymentRepository) =>
-        new RefundPaymentUseCase(paymentRepo),
-      inject: ['PaymentRepository'],
+      useFactory: (
+        paymentRepo: PaymentRepository,
+        gatewayResolver: PaymentGatewayResolver,
+      ) => new RefundPaymentUseCase(paymentRepo, gatewayResolver),
+      inject: ['PaymentRepository', 'PaymentGatewayResolver'],
     },
     {
       provide: GetPaymentUseCase,

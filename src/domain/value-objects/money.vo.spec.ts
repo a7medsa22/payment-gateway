@@ -137,8 +137,8 @@ describe('Money Value Object', () => {
     });
   });
 
-  describe('Provider Conversion (Cents)', () => {
-    it('should convert Money to cents and back', () => {
+  describe('Provider Conversion (Smallest Unit & Cents)', () => {
+    it('should convert Money to cents and back for 2-decimal currencies', () => {
       const money = Money.from('49.99', 'USD');
       const cents = money.toCents();
 
@@ -146,6 +146,21 @@ describe('Money Value Object', () => {
 
       const restored = Money.fromCents(cents, 'USD');
       expect(restored.equals(money)).toBe(true);
+    });
+
+    it('should correctly convert 3-decimal currencies (KWD, BHD, OMR) by factor 1000', () => {
+      const kwd = Money.from('1.500', 'KWD');
+      expect(kwd.toSmallestUnit()).toBe(1500);
+      expect(kwd.toCents()).toBe(1500);
+
+      const restoredKwd = Money.fromSmallestUnit(1500, 'KWD');
+      expect(restoredKwd.equals(kwd)).toBe(true);
+
+      const bhd = Money.from('2.750', 'BHD');
+      expect(bhd.toSmallestUnit()).toBe(2750);
+
+      const omr = Money.from('0.050', 'OMR');
+      expect(omr.toSmallestUnit()).toBe(50);
     });
   });
 

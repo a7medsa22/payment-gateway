@@ -4,6 +4,8 @@ import {
   PaymentGateway,
   CreatePaymentGatewayRequest,
   CreatePaymentGatewayResult,
+  RefundPaymentGatewayRequest,
+  RefundPaymentGatewayResult,
 } from '@application/ports/payment-gateway.port';
 import { PaymentGatewayException } from './payment-gateway.exception';
 
@@ -34,6 +36,33 @@ export class StripePaymentGateway implements PaymentGateway {
         providerPaymentId: paymentIntent.id,
         status: this.mapStatus(paymentIntent.status),
         clientSecret: paymentIntent.client_secret ?? undefined,
+      };
+    } catch (error) {
+      throw this.handleStripeError(error);
+    }
+  }
+
+  async refundPayment(
+    request: RefundPaymentGatewayRequest,
+  ): Promise<RefundPaymentGatewayResult> {
+    try {
+      const refund = await this.stripe.refunds.create({
+        payment_intent: request.providerPaymentId,
+        amount: request.amount,
+        metadata: {
+          paymentId: request.paymentId,
+          ...(request.reason ? { reason: request.reason } : {}),
+        },
+      });
+
+      return {
+        providerRefundId: refund.id,
+        status:
+          refund.status === 'succeeded'
+            ? 'succeeded'
+            : refund.status === 'failed'
+              ? 'failed'
+              : 'pending',
       };
     } catch (error) {
       throw this.handleStripeError(error);

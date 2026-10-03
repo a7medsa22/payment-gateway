@@ -14,6 +14,7 @@ import {
 } from '@domain/exceptions/domain.exception';
 import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 import { PaymentGatewayException } from '@infrastructure/gateways/payment-gateway.exception';
+import { OptimisticLockVersionMismatchError } from 'typeorm';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -49,6 +50,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.BAD_GATEWAY;
       error = 'PaymentGatewayException';
       message = exception.message;
+    } else if (exception instanceof OptimisticLockVersionMismatchError) {
+      statusCode = HttpStatus.CONFLICT;
+      error = 'ConflictException';
+      message = 'Resource was updated by another request. Please retry.';
     } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const res = exception.getResponse();

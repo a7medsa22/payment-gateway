@@ -13,8 +13,23 @@ export interface CreatePaymentGatewayResult {
   clientSecret?: string;
 }
 
+export interface RefundPaymentGatewayRequest {
+  paymentId: string;
+  providerPaymentId: string;
+  amount?: number;
+  reason?: string;
+}
+
+export interface RefundPaymentGatewayResult {
+  providerRefundId: string;
+  status: 'pending' | 'succeeded' | 'failed';
+}
+
 export interface PaymentGateway {
   createPayment(
     request: CreatePaymentGatewayRequest,
   ): Promise<CreatePaymentGatewayResult>;
+  refundPayment(
+    request: RefundPaymentGatewayRequest,
+  ): Promise<RefundPaymentGatewayResult>;
 }

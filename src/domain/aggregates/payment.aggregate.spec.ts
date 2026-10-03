@@ -146,6 +146,34 @@ describe('Payment Aggregate', () => {
       expect(txn.providerTransactionId).toBe('ch_stripe_123');
 
       expect(payment.totalCharged.equals(payment.amount)).toBe(true);
+      expect(payment.providerPaymentId).toBe('ch_stripe_123');
+    });
+
+    it('should set providerPaymentId via setProviderPaymentId()', () => {
+      const payment = createTestPayment();
+      payment.start();
+      payment.setProviderPaymentId('pi_pending_999');
+
+      expect(payment.providerPaymentId).toBe('pi_pending_999');
+    });
+
+    it('should throw DomainException if empty providerPaymentId passed to setProviderPaymentId()', () => {
+      const payment = createTestPayment();
+      expect(() => payment.setProviderPaymentId('')).toThrow(DomainException);
+    });
+
+    it('should retain version when reconstituted', () => {
+      const payment = Payment.reconstitute({
+        id: 'pay_v',
+        merchantId: 'merchant_1',
+        userId: 'user_1',
+        amount: Money.from('10.00', 'USD'),
+        status: PaymentStatus.SUCCEEDED,
+        provider: PaymentProvider.STRIPE,
+        version: 3,
+      });
+
+      expect(payment.version).toBe(3);
     });
 
     it('should transition from PROCESSING to SUCCEEDED', () => {

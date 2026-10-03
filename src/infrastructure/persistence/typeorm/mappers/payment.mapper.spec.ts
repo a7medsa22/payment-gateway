@@ -43,7 +43,7 @@ describe('PaymentMapper', () => {
       expect(paymentSchema.currency).toBe('USD');
       expect(paymentSchema.status).toBe(PaymentStatus.PARTIALLY_REFUNDED);
       expect(paymentSchema.provider).toBe(PaymentProvider.STRIPE);
-      expect(paymentSchema.providerPaymentId).toBe('pi_stripe_789');
+      expect(paymentSchema.providerPaymentId).toBe('ch_stripe_789');
       expect(paymentSchema.paymentMethodType).toBe('card');
       expect(paymentSchema.description).toBe('Order #1001');
       expect(paymentSchema.succeededAt).toEqual(fixedDate);
@@ -196,6 +196,27 @@ describe('PaymentMapper', () => {
           originalPayment.refundableAmount,
         ),
       ).toBe(true);
+    });
+
+    it('should correctly map version between domain and persistence', () => {
+      const paymentSchema = new PaymentSchema();
+      paymentSchema.id = 'pay-v1';
+      paymentSchema.merchantId = 'merchant-v1';
+      paymentSchema.userId = 'user-v1';
+      paymentSchema.amount = '100.0000';
+      paymentSchema.currency = 'USD';
+      paymentSchema.status = PaymentStatus.SUCCEEDED;
+      paymentSchema.provider = PaymentProvider.STRIPE;
+      paymentSchema.version = 5;
+      paymentSchema.createdAt = new Date();
+      paymentSchema.updatedAt = new Date();
+
+      const domainPayment = PaymentMapper.toDomain(paymentSchema);
+      expect(domainPayment.version).toBe(5);
+
+      const { paymentSchema: mappedSchema } =
+        PaymentMapper.toPersistence(domainPayment);
+      expect(mappedSchema.version).toBe(5);
     });
   });
 });

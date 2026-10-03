@@ -6,6 +6,7 @@ import {
   PaymentNotFoundException,
 } from '@domain/exceptions/domain.exception';
 import { PaymentGatewayException } from '@infrastructure/gateways/payment-gateway.exception';
+import { OptimisticLockVersionMismatchError } from 'typeorm';
 
 describe('HttpExceptionFilter', () => {
   let filter: HttpExceptionFilter;
@@ -106,6 +107,21 @@ describe('HttpExceptionFilter', () => {
         statusCode: 400,
         error: 'Bad Request',
         message: 'Validation failed',
+      }),
+    );
+  });
+
+  it('should map OptimisticLockVersionMismatchError to 409 Conflict', () => {
+    const error = new OptimisticLockVersionMismatchError('PaymentSchema', 1, 2);
+
+    filter.catch(error, mockHost);
+
+    expect(mockStatus).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(mockJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 409,
+        error: 'ConflictException',
+        message: 'Resource was updated by another request. Please retry.',
       }),
     );
   });

@@ -14,6 +14,7 @@ describe('TypeOrmWebhookEventRepository', () => {
       count: jest.fn(),
       create: jest.fn().mockImplementation((dto) => dto),
       save: jest.fn(),
+      insert: jest.fn(),
       update: jest.fn(),
     } as unknown as jest.Mocked<Repository<WebhookEventSchema>>;
 
@@ -42,10 +43,10 @@ describe('TypeOrmWebhookEventRepository', () => {
   });
 
   describe('record()', () => {
-    it('should create and save webhook event entity', async () => {
-      mockRepo.save.mockResolvedValue({} as any);
+    it('should create and insert webhook event entity and return true', async () => {
+      mockRepo.insert.mockResolvedValue({} as any);
 
-      await repository.record({
+      const result = await repository.record({
         id: 'evt-uuid-1',
         eventId: 'evt_123',
         provider: 'STRIPE',
@@ -53,6 +54,7 @@ describe('TypeOrmWebhookEventRepository', () => {
         payload: { id: 'pi_123' },
       });
 
+      expect(result).toBe(true);
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'evt-uuid-1',
@@ -62,27 +64,27 @@ describe('TypeOrmWebhookEventRepository', () => {
           status: WebhookEventStatus.RECEIVED,
         }),
       );
-      expect(mockRepo.save).toHaveBeenCalled();
+      expect(mockRepo.insert).toHaveBeenCalled();
     });
 
-    it('should gracefully handle duplicate key error (code 23505)', async () => {
+    it('should return false on duplicate key error (code 23505)', async () => {
       const error: any = new Error('duplicate key value');
       error.code = '23505';
-      mockRepo.save.mockRejectedValue(error);
+      mockRepo.insert.mockRejectedValue(error);
 
-      await expect(
-        repository.record({
-          id: 'evt-uuid-1',
-          eventId: 'evt_123',
-          provider: 'STRIPE',
-          eventType: 'payment_intent.succeeded',
-        }),
-      ).resolves.not.toThrow();
+      const result = await repository.record({
+        id: 'evt-uuid-1',
+        eventId: 'evt_123',
+        provider: 'STRIPE',
+        eventType: 'payment_intent.succeeded',
+      });
+
+      expect(result).toBe(false);
     });
 
     it('should rethrow non-duplicate errors', async () => {
       const error = new Error('Database connection lost');
-      mockRepo.save.mockRejectedValue(error);
+      mockRepo.insert.mockRejectedValue(error);
 
       await expect(
         repository.record({

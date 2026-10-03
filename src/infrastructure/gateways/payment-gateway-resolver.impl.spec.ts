@@ -10,6 +10,7 @@ describe('PaymentGatewayResolverImpl', () => {
   beforeEach(() => {
     mockStripeGateway = {
       createPayment: jest.fn(),
+      refundPayment: jest.fn(),
     };
     resolver = new PaymentGatewayResolverImpl(mockStripeGateway);
   });

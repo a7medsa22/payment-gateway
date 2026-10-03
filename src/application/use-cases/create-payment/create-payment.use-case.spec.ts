@@ -24,6 +24,7 @@ describe('CreatePaymentUseCase', () => {
 
     mockPaymentGateway = {
       createPayment: jest.fn(),
+      refundPayment: jest.fn(),
     };
 
     mockGatewayResolver = {
@@ -63,14 +64,14 @@ describe('CreatePaymentUseCase', () => {
       description: 'Test payment',
     });
 
-    expect(mockPaymentRepository.save).toHaveBeenCalledTimes(1);
-    const savedPayment: Payment = mockPaymentRepository.save.mock.calls[0][0];
-    expect(savedPayment.status).toBe(PaymentStatus.SUCCEEDED);
-    expect(savedPayment.merchantId).toBe('merchant_123');
-    expect(savedPayment.transactions).toHaveLength(1);
+    expect(mockPaymentRepository.save).toHaveBeenCalledTimes(2);
+    const finalSavedPayment: Payment = mockPaymentRepository.save.mock.calls[1][0];
+    expect(finalSavedPayment.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(finalSavedPayment.merchantId).toBe('merchant_123');
+    expect(finalSavedPayment.transactions).toHaveLength(1);
 
     expect(result).toEqual({
-      id: savedPayment.id,
+      id: finalSavedPayment.id,
       merchantId: 'merchant_123',
       userId: 'user_123',
       amount: '100.0000',
@@ -79,11 +80,65 @@ describe('CreatePaymentUseCase', () => {
       provider: PaymentProvider.STRIPE,
       providerPaymentId: 'pi_stripe_123',
       clientSecret: 'secret_123',
-      createdAt: savedPayment.createdAt,
+      createdAt: finalSavedPayment.createdAt,
     });
   });
 
-  it('should keep payment in PENDING status when gateway returns pending', async () => {
+  it('should persist payment in PENDING state before calling gateway', async () => {
+    const callOrder: string[] = [];
+    mockPaymentRepository.save.mockImplementation(async (payment) => {
+      callOrder.push(`save_${payment.status}`);
+    });
+    mockPaymentGateway.createPayment.mockImplementation(async () => {
+      callOrder.push('gateway_create');
+      return {
+        providerPaymentId: 'pi_123',
+        status: 'succeeded',
+      };
+    });
+
+    await useCase.execute({
+      merchantId: 'merchant_123',
+      userId: 'user_123',
+      amount: '50.00',
+      currency: 'USD',
+      provider: 'stripe',
+    });
+
+    expect(callOrder).toEqual([
+      'save_pending',
+      'gateway_create',
+      'save_succeeded',
+    ]);
+  });
+
+  it('should mark payment as FAILED and save when gateway throws an error', async () => {
+    const savedStatuses: PaymentStatus[] = [];
+    mockPaymentRepository.save.mockImplementation(async (payment) => {
+      savedStatuses.push(payment.status);
+    });
+
+    mockPaymentGateway.createPayment.mockRejectedValueOnce(
+      new Error('Stripe network timeout'),
+    );
+
+    await expect(
+      useCase.execute({
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: '50.00',
+        currency: 'USD',
+        provider: 'stripe',
+      }),
+    ).rejects.toThrow('Stripe network timeout');
+
+    expect(mockPaymentRepository.save).toHaveBeenCalledTimes(2);
+    expect(savedStatuses).toEqual([PaymentStatus.PENDING, PaymentStatus.FAILED]);
+    const failedPayment: Payment = mockPaymentRepository.save.mock.calls[1][0];
+    expect(failedPayment.errorCode).toBe('provider_error');
+  });
+
+  it('should keep payment in PENDING status when gateway returns pending and store providerPaymentId', async () => {
     const gatewayResult: CreatePaymentGatewayResult = {
       providerPaymentId: 'pi_stripe_pending_123',
       status: 'pending',
@@ -103,10 +158,13 @@ describe('CreatePaymentUseCase', () => {
       PaymentProvider.PAYMOB,
     );
     expect(result.status).toBe(PaymentStatus.PENDING);
+    expect(result.providerPaymentId).toBe('pi_stripe_pending_123');
 
-    const savedPayment: Payment = mockPaymentRepository.save.mock.calls[0][0];
+    expect(mockPaymentRepository.save).toHaveBeenCalledTimes(2);
+    const savedPayment: Payment = mockPaymentRepository.save.mock.calls[1][0];
     expect(savedPayment.status).toBe(PaymentStatus.PENDING);
     expect(savedPayment.merchantId).toBe('merchant_123');
+    expect(savedPayment.providerPaymentId).toBe('pi_stripe_pending_123');
     expect(savedPayment.transactions).toHaveLength(0);
   });
 
@@ -127,7 +185,8 @@ describe('CreatePaymentUseCase', () => {
 
     expect(result.status).toBe(PaymentStatus.FAILED);
 
-    const savedPayment: Payment = mockPaymentRepository.save.mock.calls[0][0];
+    expect(mockPaymentRepository.save).toHaveBeenCalledTimes(2);
+    const savedPayment: Payment = mockPaymentRepository.save.mock.calls[1][0];
     expect(savedPayment.status).toBe(PaymentStatus.FAILED);
     expect(savedPayment.merchantId).toBe('merchant_123');
     expect(savedPayment.errorCode).toBe('provider_rejected');
@@ -181,5 +240,7 @@ describe('CreatePaymentUseCase', () => {
         provider: 'stripe',
       }),
     ).rejects.toThrow('Database error');
+
+    expect(mockPaymentGateway.createPayment).not.toHaveBeenCalled();
   });
 });

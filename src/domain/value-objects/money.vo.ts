@@ -123,18 +123,43 @@ export class Money {
   // Utility methods
 
   /**
-   * Convert to cents (for payment providers like Stripe)
+   * Convert to smallest currency unit (e.g. cents for USD, fils for KWD/BHD/OMR)
    */
-  toCents(): number {
-    return this._amount.times(100).toNumber();
+  toSmallestUnit(): number {
+    const factor = Money.getCurrencyFactor(this._currency);
+    return this._amount.times(factor).round().toNumber();
   }
 
   /**
-   * Create from cents
+   * Create from smallest currency unit
+   */
+  static fromSmallestUnit(units: number, currency: Currency): Money {
+    const factor = Money.getCurrencyFactor(currency);
+    const decimal = new Decimal(units).dividedBy(factor);
+    return new Money(decimal, currency);
+  }
+
+  /**
+   * Convert to cents / minor units (delegates to toSmallestUnit)
+   */
+  toCents(): number {
+    return this.toSmallestUnit();
+  }
+
+  /**
+   * Create from cents / minor units (delegates to fromSmallestUnit)
    */
   static fromCents(cents: number, currency: Currency): Money {
-    const decimal = new Decimal(cents).dividedBy(100);
-    return new Money(decimal, currency);
+    return Money.fromSmallestUnit(cents, currency);
+  }
+
+  private static getCurrencyFactor(currency: string): number {
+    const THREE_DECIMAL = new Set(['BHD', 'KWD', 'OMR']);
+    const ZERO_DECIMAL = new Set(['JPY', 'KRW', 'UGX', 'VND']);
+
+    if (THREE_DECIMAL.has(currency)) return 1000;
+    if (ZERO_DECIMAL.has(currency)) return 1;
+    return 100;
   }
 
   /**

@@ -36,24 +36,38 @@ export class CreatePaymentUseCase {
     // 3. Start payment process (CREATED -> PENDING)
     payment.start();
 
-    // 4. Resolve gateway and perform external side-effect
-    const gateway = this.gatewayResolver.resolve(provider);
-    const gatewayResult = await gateway.createPayment({
-      paymentId: id,
-      amount: money.toCents(),
-      currency,
-      description: input.description,
-    });
+    // 4. PERSIST FIRST: Save record to DB before invoking external gateway to prevent orphaned charges
+    await this.paymentRepository.save(payment);
 
-    // 5. Apply domain state transition based on gateway result
-    if (gatewayResult.status === 'succeeded') {
-      payment.succeed(gatewayResult.providerPaymentId);
-    } else if (gatewayResult.status === 'failed') {
-      payment.fail('provider_rejected', FailureReason.PROVIDER_ERROR);
+    // 5. Resolve gateway and perform external side-effect
+    const gateway = this.gatewayResolver.resolve(provider);
+    let gatewayResult;
+    try {
+      gatewayResult = await gateway.createPayment({
+        paymentId: id,
+        amount: money.toSmallestUnit(),
+        currency,
+        description: input.description,
+      });
+    } catch (error) {
+      payment.fail('provider_error', FailureReason.PROVIDER_ERROR);
+      await this.paymentRepository.save(payment);
+      throw error;
     }
 
-    // 6. Persist Payment aggregate
-    await this.paymentRepository.save(payment);
+    // 6. Apply domain state transition based on gateway result
+    if (gatewayResult.status === 'succeeded') {
+      payment.succeed(gatewayResult.providerPaymentId);
+      await this.paymentRepository.save(payment);
+    } else if (gatewayResult.status === 'failed') {
+      payment.fail('provider_rejected', FailureReason.PROVIDER_ERROR);
+      await this.paymentRepository.save(payment);
+    } else if (gatewayResult.status === 'pending') {
+      if (gatewayResult.providerPaymentId) {
+        payment.setProviderPaymentId(gatewayResult.providerPaymentId);
+      }
+      await this.paymentRepository.save(payment);
+    }
 
     // 7. Return application DTO
     return {

@@ -1,14 +1,22 @@
 import { PaymentRepository } from '@application/ports/payment.repository';
+import { PaymentGatewayResolver } from '@application/ports/payment-gateway-resolver.port';
 import { RefundPaymentInput } from './refund-payment.input';
 import { RefundResultDto } from '@application/dtos/refund-result.dto';
-import { PaymentNotFoundException } from '@domain/exceptions/domain.exception';
+import {
+  DomainException,
+  PaymentException,
+  PaymentNotFoundException,
+} from '@domain/exceptions/domain.exception';
 import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 import { Money } from '@domain/value-objects/money.vo';
-import { Currency } from '@domain/enums';
+import { Currency, PaymentStatus } from '@domain/enums';
 import { validateCurrency } from '@application/mappers/input.mapper';
 
 export class RefundPaymentUseCase {
-  constructor(private readonly paymentRepository: PaymentRepository) {}
+  constructor(
+    private readonly paymentRepository: PaymentRepository,
+    private readonly gatewayResolver: PaymentGatewayResolver,
+  ) {}
 
   async execute(input: RefundPaymentInput): Promise<RefundResultDto> {
     const payment = await this.paymentRepository.findById(input.paymentId);
@@ -33,8 +41,55 @@ export class RefundPaymentUseCase {
       refundAmount = Money.from(input.amount, currency as Currency);
     }
 
-    // Execute domain business logic (invariants checked inside aggregate)
-    payment.refund(refundAmount, input.reason);
+    // Validate domain preconditions before executing external financial side effect
+    if (
+      payment.status !== PaymentStatus.SUCCEEDED &&
+      payment.status !== PaymentStatus.PARTIALLY_REFUNDED
+    ) {
+      throw new PaymentException(
+        `Cannot refund payment from status: ${payment.status}`,
+      );
+    }
+
+    const effectiveAmount = refundAmount ?? payment.refundableAmount;
+
+    if (effectiveAmount.isZero() || !effectiveAmount.isPositive()) {
+      throw new DomainException('Refund amount must be positive');
+    }
+
+    if (effectiveAmount.currency !== payment.amount.currency) {
+      throw new DomainException(
+        `Refund currency mismatch: expected ${payment.amount.currency}, got ${effectiveAmount.currency}`,
+      );
+    }
+
+    if (effectiveAmount.isGreaterThan(payment.refundableAmount)) {
+      throw new DomainException(
+        `Refund amount (${effectiveAmount.amount}) exceeds refundable amount (${payment.refundableAmount.amount})`,
+      );
+    }
+
+    if (!payment.providerPaymentId) {
+      throw new PaymentException(
+        'Cannot refund payment without provider payment ID',
+      );
+    }
+
+    // Call external gateway to process the refund
+    const gateway = this.gatewayResolver.resolve(payment.provider);
+    const gatewayResult = await gateway.refundPayment({
+      paymentId: payment.id,
+      providerPaymentId: payment.providerPaymentId,
+      amount: effectiveAmount.toSmallestUnit(),
+      reason: input.reason,
+    });
+
+    if (gatewayResult.status === 'failed') {
+      throw new PaymentException('Payment provider rejected refund');
+    }
+
+    // Execute domain business logic (state transition & child transaction)
+    payment.refund(refundAmount, input.reason, gatewayResult.providerRefundId);
 
     // Persist changes
     await this.paymentRepository.save(payment);

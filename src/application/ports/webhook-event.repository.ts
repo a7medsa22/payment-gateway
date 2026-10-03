@@ -10,6 +10,6 @@ export interface WebhookEventRecord {
 
 export interface WebhookEventRepository {
   exists(provider: string, eventId: string): Promise<boolean>;
-  record(event: WebhookEventRecord): Promise<void>;
+  record(event: WebhookEventRecord): Promise<boolean>;
   markProcessed(provider: string, eventId: string): Promise<void>;
 }

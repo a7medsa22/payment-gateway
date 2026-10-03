@@ -24,7 +24,7 @@ export class TypeOrmWebhookEventRepository implements WebhookEventRepository {
     return count > 0;
   }
 
-  async record(event: WebhookEventRecord): Promise<void> {
+  async record(event: WebhookEventRecord): Promise<boolean> {
     const entity = this.webhookEventRepo.create({
       id: event.id,
       eventId: event.eventId,
@@ -36,11 +36,12 @@ export class TypeOrmWebhookEventRepository implements WebhookEventRepository {
     });
 
     try {
-      await this.webhookEventRepo.save(entity);
+      await this.webhookEventRepo.insert(entity as any);
+      return true;
     } catch (error: any) {
-      // Ignore duplicate key violation if already recorded concurrently
+      // Return false on duplicate key violation (23505) when already recorded concurrently
       if (error?.code === '23505') {
-        return;
+        return false;
       }
       throw error;
     }

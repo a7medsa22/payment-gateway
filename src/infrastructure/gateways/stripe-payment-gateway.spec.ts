@@ -6,12 +6,16 @@ import { CreatePaymentGatewayRequest } from '@application/ports/payment-gateway.
 const actualStripe = jest.requireActual<typeof import('stripe')>('stripe');
 
 const mockCreate = jest.fn();
+const mockRefundsCreate = jest.fn();
 
 jest.mock('stripe', () => {
   const actual = jest.requireActual<typeof import('stripe')>('stripe');
   const MockStripe = jest.fn().mockImplementation(() => ({
     paymentIntents: {
       create: mockCreate,
+    },
+    refunds: {
+      create: mockRefundsCreate,
     },
   }));
   Object.assign(MockStripe, { errors: actual.default.errors });
@@ -35,6 +39,7 @@ describe('StripePaymentGateway', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCreate.mockReset();
+    mockRefundsCreate.mockReset();
     gateway = new StripePaymentGateway('sk_test_mock_key');
   });
 
@@ -257,6 +262,47 @@ describe('StripePaymentGateway', () => {
           expect(err.cause).toBe(rawError);
         }
       }
+    });
+  });
+
+  describe('refundPayment', () => {
+    it('should call stripe.refunds.create and return mapped result', async () => {
+      mockRefundsCreate.mockResolvedValue({
+        id: 're_123',
+        status: 'succeeded',
+      });
+
+      const result = await gateway.refundPayment({
+        paymentId: 'pay_test_123',
+        providerPaymentId: 'pi_test_123',
+        amount: 3000,
+        reason: 'Customer return',
+      });
+
+      expect(mockRefundsCreate).toHaveBeenCalledWith({
+        payment_intent: 'pi_test_123',
+        amount: 3000,
+        metadata: {
+          paymentId: 'pay_test_123',
+          reason: 'Customer return',
+        },
+      });
+
+      expect(result).toEqual({
+        providerRefundId: 're_123',
+        status: 'succeeded',
+      });
+    });
+
+    it('should translate stripe errors to PaymentGatewayException on refund', async () => {
+      mockRefundsCreate.mockRejectedValue(new Error('Stripe refund failed'));
+
+      await expect(
+        gateway.refundPayment({
+          paymentId: 'pay_test_123',
+          providerPaymentId: 'pi_test_123',
+        }),
+      ).rejects.toThrow(PaymentGatewayException);
     });
   });
 });
