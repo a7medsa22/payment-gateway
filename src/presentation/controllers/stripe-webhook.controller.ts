@@ -13,9 +13,11 @@ import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import Stripe from 'stripe';
 import { PaymentRepository } from '@application/ports/payment.repository';
-import { WebhookEventRepository } from '@application/ports/webhook-event.repository';
+import {
+  WebhookEventRepository,
+  WebhookEventStatus,
+} from '@application/ports/webhook-event.repository';
 import { PaymentStatus, FailureReason } from '@domain/enums';
-import { WebhookEventStatus } from '@infrastructure/persistence/typeorm/schemas/webhook-event.schema';
 import { RawBody } from '../decorators/raw-body.decorator';
 
 @ApiTags('Webhooks')
@@ -92,56 +94,45 @@ export class StripeWebhookController {
       );
     }
 
-    // Deduplication check (Persistent WebhookEvent table)
-    const isDuplicate = await this.webhookEventRepository.exists(
-      'STRIPE',
-      event.id,
-    );
-    if (isDuplicate) {
-      this.logger.log(
-        `Stripe webhook event ${event.id} already processed. Skipping.`,
-      );
-      return { received: true, status: 'already_processed' };
-    }
-
-    // Persist incoming event record atomically (prevents concurrent insertion race)
-    const recorded = await this.webhookEventRepository.record({
+    const claim = await this.webhookEventRepository.claim({
       id: crypto.randomUUID(),
       eventId: event.id,
       provider: 'STRIPE',
       eventType: event.type,
-      status: WebhookEventStatus.RECEIVED,
       payload: event.data.object as Record<string, unknown>,
     });
 
-    if (!recorded) {
-      this.logger.log(
-        `Stripe webhook event ${event.id} already processed concurrently. Skipping.`,
-      );
+    if (claim === 'processed') {
       return { received: true, status: 'already_processed' };
     }
 
-    // Handle supported events
-    let resultStatus = 'ignored';
+    try {
+      const status = await this.dispatch(event);
+      return { received: true, status };
+    } catch (error) {
+      await this.webhookEventRepository
+        .markFailed('STRIPE', event.id, (error as Error).message)
+        .catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async dispatch(event: Stripe.Event): Promise<string> {
     switch (event.type) {
       case 'payment_intent.succeeded': {
         const intent = event.data.object as Stripe.PaymentIntent;
-        resultStatus = await this.handlePaymentIntentSucceeded(event.id, intent);
-        break;
+        return this.handlePaymentIntentSucceeded(event.id, intent);
       }
       case 'payment_intent.payment_failed': {
         const intent = event.data.object as Stripe.PaymentIntent;
-        resultStatus = await this.handlePaymentIntentFailed(event.id, intent);
-        break;
+        return this.handlePaymentIntentFailed(event.id, intent);
       }
       default: {
         this.logger.log(`Unhandled Stripe event type: ${event.type}`);
         await this.webhookEventRepository.markProcessed('STRIPE', event.id);
-        resultStatus = 'ignored';
+        return 'ignored';
       }
     }
-
-    return { received: true, status: resultStatus };
   }
 
   private async handlePaymentIntentSucceeded(
@@ -154,6 +145,44 @@ export class StripeWebhookController {
       this.logger.warn(`No payment found for Stripe intent ${intent.id}`);
       await this.webhookEventRepository.markProcessed('STRIPE', eventId);
       return 'payment_not_found';
+    }
+
+    const amountOk =
+      intent.amount_received === payment.amount.toSmallestUnit() &&
+      intent.currency === payment.amount.currency.toLowerCase();
+    const intentOk =
+      !payment.providerPaymentId || payment.providerPaymentId === intent.id;
+
+    if (!amountOk || !intentOk) {
+      this.logger.error(
+        `[ALERT] PAYMENT_MISMATCH payment=${payment.id} intent=${intent.id} ` +
+          `expected=${payment.amount.toSmallestUnit()} ${payment.amount.currency} ` +
+          `got=${intent.amount_received} ${intent.currency}`,
+      );
+      await this.webhookEventRepository.markRequiresReview(
+        'STRIPE',
+        eventId,
+        'amount_or_intent_mismatch',
+      );
+      return 'requires_review';
+    }
+
+    if (
+      [
+        PaymentStatus.FAILED,
+        PaymentStatus.EXPIRED,
+        PaymentStatus.CANCELLED,
+      ].includes(payment.status)
+    ) {
+      this.logger.error(
+        `[ALERT] CHARGE_ON_TERMINAL_PAYMENT payment=${payment.id} status=${payment.status} intent=${intent.id}`,
+      );
+      await this.webhookEventRepository.markRequiresReview(
+        'STRIPE',
+        eventId,
+        `succeeded_on_${payment.status}`,
+      );
+      return 'requires_review';
     }
 
     // Idempotency: Return immediately if payment is already in terminal SUCCEEDED state

@@ -6,7 +6,7 @@ import { PaymentRepository } from '@application/ports/payment.repository';
 import { WebhookEventRepository } from '@application/ports/webhook-event.repository';
 import { Payment } from '@domain/aggregates/payment.aggregate';
 import { Money } from '@domain/value-objects/money.vo';
-import { PaymentProvider, PaymentStatus } from '@domain/enums';
+import { PaymentProvider, PaymentStatus, FailureReason } from '@domain/enums';
 
 describe('StripeWebhookController', () => {
   let controller: StripeWebhookController;
@@ -31,9 +31,10 @@ describe('StripeWebhookController', () => {
     } as unknown as jest.Mocked<Required<PaymentRepository>>;
 
     mockWebhookEventRepo = {
-      exists: jest.fn().mockResolvedValue(false),
-      record: jest.fn().mockResolvedValue(true),
+      claim: jest.fn().mockResolvedValue('new'),
       markProcessed: jest.fn().mockResolvedValue(undefined),
+      markFailed: jest.fn().mockResolvedValue(undefined),
+      markRequiresReview: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<WebhookEventRepository>;
 
     mockStripe = {
@@ -69,7 +70,7 @@ describe('StripeWebhookController', () => {
       );
     });
 
-    it('should return already_processed if event was previously handled (deduplication)', async () => {
+    it('should return already_processed if claim returns processed (deduplication)', async () => {
       const mockEvent: Stripe.Event = {
         id: 'evt_duplicate_1',
         type: 'payment_intent.succeeded',
@@ -77,7 +78,7 @@ describe('StripeWebhookController', () => {
       } as any;
 
       (mockStripe.webhooks.constructEvent as jest.Mock).mockReturnValue(mockEvent);
-      mockWebhookEventRepo.exists.mockResolvedValue(true);
+      mockWebhookEventRepo.claim.mockResolvedValue('processed');
 
       const result = await controller.handleStripeWebhook(
         'sig_valid',
@@ -85,27 +86,9 @@ describe('StripeWebhookController', () => {
       );
 
       expect(result).toEqual({ received: true, status: 'already_processed' });
-      expect(mockWebhookEventRepo.exists).toHaveBeenCalledWith('STRIPE', 'evt_duplicate_1');
-      expect(mockPaymentRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('should return already_processed if record returns false (concurrent race)', async () => {
-      const mockEvent: Stripe.Event = {
-        id: 'evt_concurrent_1',
-        type: 'payment_intent.succeeded',
-        data: { object: { id: 'pi_123' } },
-      } as any;
-
-      (mockStripe.webhooks.constructEvent as jest.Mock).mockReturnValue(mockEvent);
-      mockWebhookEventRepo.exists.mockResolvedValue(false);
-      mockWebhookEventRepo.record.mockResolvedValue(false);
-
-      const result = await controller.handleStripeWebhook(
-        'sig_valid',
-        Buffer.from('payload'),
+      expect(mockWebhookEventRepo.claim).toHaveBeenCalledWith(
+        expect.objectContaining({ eventId: 'evt_duplicate_1', provider: 'STRIPE' }),
       );
-
-      expect(result).toEqual({ received: true, status: 'already_processed' });
       expect(mockPaymentRepo.save).not.toHaveBeenCalled();
     });
 
@@ -125,6 +108,8 @@ describe('StripeWebhookController', () => {
         data: {
           object: {
             id: 'pi_stripe_100',
+            amount_received: 10000,
+            currency: 'usd',
             metadata: { paymentId: 'pay-uuid-1' },
           },
         },
@@ -144,6 +129,88 @@ describe('StripeWebhookController', () => {
       expect(mockWebhookEventRepo.markProcessed).toHaveBeenCalledWith('STRIPE', 'evt_success_1');
     });
 
+    it('should flag requires_review on amount or currency mismatch without succeeding payment', async () => {
+      const payment = Payment.create({
+        id: 'pay-mismatch',
+        merchantId: 'merchant_webhook',
+        userId: 'usr_1',
+        amount: Money.from('100.00', 'USD'),
+        provider: PaymentProvider.STRIPE,
+      });
+      payment.start();
+
+      const mockEvent: Stripe.Event = {
+        id: 'evt_mismatch_1',
+        type: 'payment_intent.succeeded',
+        data: {
+          object: {
+            id: 'pi_stripe_mismatch',
+            amount_received: 5000, // 50.00 USD received instead of 100.00!
+            currency: 'usd',
+            metadata: { paymentId: 'pay-mismatch' },
+          },
+        },
+      } as any;
+
+      (mockStripe.webhooks.constructEvent as jest.Mock).mockReturnValue(mockEvent);
+      mockPaymentRepo.findById.mockResolvedValue(payment);
+
+      const result = await controller.handleStripeWebhook(
+        'sig_valid',
+        Buffer.from('payload'),
+      );
+
+      expect(result).toEqual({ received: true, status: 'requires_review' });
+      expect(payment.status).toBe(PaymentStatus.PENDING); // Not succeeded
+      expect(mockWebhookEventRepo.markRequiresReview).toHaveBeenCalledWith(
+        'STRIPE',
+        'evt_mismatch_1',
+        'amount_or_intent_mismatch',
+      );
+      expect(mockPaymentRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('should flag requires_review when capture arrives on a terminal payment (e.g. FAILED/CANCELLED)', async () => {
+      const payment = Payment.create({
+        id: 'pay-terminal',
+        merchantId: 'merchant_webhook',
+        userId: 'usr_1',
+        amount: Money.from('100.00', 'USD'),
+        provider: PaymentProvider.STRIPE,
+      });
+      payment.start();
+      payment.fail('card_declined', FailureReason.INSUFFICIENT_FUNDS);
+
+      const mockEvent: Stripe.Event = {
+        id: 'evt_terminal_1',
+        type: 'payment_intent.succeeded',
+        data: {
+          object: {
+            id: 'pi_stripe_terminal',
+            amount_received: 10000,
+            currency: 'usd',
+            metadata: { paymentId: 'pay-terminal' },
+          },
+        },
+      } as any;
+
+      (mockStripe.webhooks.constructEvent as jest.Mock).mockReturnValue(mockEvent);
+      mockPaymentRepo.findById.mockResolvedValue(payment);
+
+      const result = await controller.handleStripeWebhook(
+        'sig_valid',
+        Buffer.from('payload'),
+      );
+
+      expect(result).toEqual({ received: true, status: 'requires_review' });
+      expect(mockWebhookEventRepo.markRequiresReview).toHaveBeenCalledWith(
+        'STRIPE',
+        'evt_terminal_1',
+        `succeeded_on_${PaymentStatus.FAILED}`,
+      );
+      expect(mockPaymentRepo.save).not.toHaveBeenCalled();
+    });
+
     it('should be idempotent if payment is already in SUCCEEDED state', async () => {
       const payment = Payment.create({
         id: 'pay-uuid-2',
@@ -161,6 +228,8 @@ describe('StripeWebhookController', () => {
         data: {
           object: {
             id: 'pi_stripe_100',
+            amount_received: 10000,
+            currency: 'usd',
             metadata: { paymentId: 'pay-uuid-2' },
           },
         },
@@ -177,6 +246,27 @@ describe('StripeWebhookController', () => {
       expect(result).toEqual({ received: true, status: 'already_succeeded' });
       expect(mockPaymentRepo.save).not.toHaveBeenCalled();
       expect(mockWebhookEventRepo.markProcessed).toHaveBeenCalledWith('STRIPE', 'evt_success_2');
+    });
+
+    it('should call markFailed and rethrow when dispatch handler throws', async () => {
+      const mockEvent: Stripe.Event = {
+        id: 'evt_err_1',
+        type: 'payment_intent.succeeded',
+        data: { object: { id: 'pi_err' } },
+      } as any;
+
+      (mockStripe.webhooks.constructEvent as jest.Mock).mockReturnValue(mockEvent);
+      mockPaymentRepo.findByProviderPaymentId.mockRejectedValue(new Error('DB failure'));
+
+      await expect(
+        controller.handleStripeWebhook('sig_valid', Buffer.from('payload')),
+      ).rejects.toThrow('DB failure');
+
+      expect(mockWebhookEventRepo.markFailed).toHaveBeenCalledWith(
+        'STRIPE',
+        'evt_err_1',
+        'DB failure',
+      );
     });
 
     it('should handle payment_intent.payment_failed and transition payment to FAILED', async () => {

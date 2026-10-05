@@ -2,13 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
+  ClaimResult,
   WebhookEventRecord,
   WebhookEventRepository,
-} from '@application/ports/webhook-event.repository';
-import {
-  WebhookEventSchema,
   WebhookEventStatus,
-} from '../schemas/webhook-event.schema';
+} from '@application/ports/webhook-event.repository';
+import { WebhookEventSchema } from '../schemas/webhook-event.schema';
 
 @Injectable()
 export class TypeOrmWebhookEventRepository implements WebhookEventRepository {
@@ -17,34 +16,35 @@ export class TypeOrmWebhookEventRepository implements WebhookEventRepository {
     private readonly webhookEventRepo: Repository<WebhookEventSchema>,
   ) {}
 
-  async exists(provider: string, eventId: string): Promise<boolean> {
-    const count = await this.webhookEventRepo.count({
-      where: { provider, eventId },
-    });
-    return count > 0;
-  }
+  async claim(event: WebhookEventRecord): Promise<ClaimResult> {
+    const inserted = await this.webhookEventRepo
+      .createQueryBuilder()
+      .insert()
+      .into(WebhookEventSchema)
+      .values({
+        id: event.id,
+        eventId: event.eventId,
+        provider: event.provider,
+        eventType: event.eventType,
+        status: WebhookEventStatus.RECEIVED,
+        payload: event.payload as any,
+      })
+      .orIgnore()
+      .returning('id')
+      .execute();
 
-  async record(event: WebhookEventRecord): Promise<boolean> {
-    const entity = this.webhookEventRepo.create({
-      id: event.id,
-      eventId: event.eventId,
+    if (inserted.raw.length > 0) return 'new';
+
+    const existing = await this.webhookEventRepo.findOneByOrFail({
       provider: event.provider,
-      eventType: event.eventType,
-      status: event.status ?? WebhookEventStatus.RECEIVED,
-      payload: event.payload,
-      processedAt: event.processedAt,
+      eventId: event.eventId,
     });
-
-    try {
-      await this.webhookEventRepo.insert(entity as any);
-      return true;
-    } catch (error: any) {
-      // Return false on duplicate key violation (23505) when already recorded concurrently
-      if (error?.code === '23505') {
-        return false;
-      }
-      throw error;
-    }
+    const done = [
+      WebhookEventStatus.PROCESSED,
+      WebhookEventStatus.IGNORED,
+      WebhookEventStatus.REQUIRES_REVIEW,
+    ] as string[];
+    return done.includes(existing.status) ? 'processed' : 'retry';
   }
 
   async markProcessed(provider: string, eventId: string): Promise<void> {
@@ -53,6 +53,35 @@ export class TypeOrmWebhookEventRepository implements WebhookEventRepository {
       {
         status: WebhookEventStatus.PROCESSED,
         processedAt: new Date(),
+      },
+    );
+  }
+
+  async markFailed(
+    provider: string,
+    eventId: string,
+    error: string,
+  ): Promise<void> {
+    await this.webhookEventRepo.update(
+      { provider, eventId },
+      {
+        status: WebhookEventStatus.FAILED,
+        lastError: error.slice(0, 1000),
+        attempts: () => 'attempts + 1',
+      },
+    );
+  }
+
+  async markRequiresReview(
+    provider: string,
+    eventId: string,
+    reason: string,
+  ): Promise<void> {
+    await this.webhookEventRepo.update(
+      { provider, eventId },
+      {
+        status: WebhookEventStatus.REQUIRES_REVIEW,
+        lastError: reason.slice(0, 1000),
       },
     );
   }

@@ -5,13 +5,9 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
+import { WebhookEventStatus } from '../../../../application/ports/webhook-event.repository';
 
-export enum WebhookEventStatus {
-  RECEIVED = 'RECEIVED',
-  PROCESSED = 'PROCESSED',
-  IGNORED = 'IGNORED',
-  FAILED = 'FAILED',
-}
+export { WebhookEventStatus };
 
 @Entity('webhook_events')
 @Index('idx_webhook_events_provider_event_id', ['provider', 'eventId'], {
@@ -36,6 +32,12 @@ export class WebhookEventSchema {
     default: WebhookEventStatus.RECEIVED,
   })
   status!: string;
+
+  @Column({ type: 'int', default: 0 })
+  attempts!: number;
+
+  @Column({ name: 'last_error', type: 'varchar', length: 1000, nullable: true })
+  lastError?: string;
 
   @Column({ type: 'jsonb', nullable: true })
   payload?: Record<string, unknown>;

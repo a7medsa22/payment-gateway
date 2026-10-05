@@ -10,8 +10,10 @@ import { ApiKeyGuard, MERCHANT_CONTEXT_KEY } from '../src/presentation/guards/ap
 import { ScopeGuard } from '../src/presentation/guards/scope.guard';
 import { PaymentRepository } from '@application/ports/payment.repository';
 import {
+  ClaimResult,
   WebhookEventRecord,
   WebhookEventRepository,
+  WebhookEventStatus,
 } from '@application/ports/webhook-event.repository';
 import { PaymentGatewayResolver } from '@application/ports/payment-gateway-resolver.port';
 import { PaymentGateway } from '@application/ports/payment-gateway.port';
@@ -46,28 +48,54 @@ class InMemoryPaymentRepository implements PaymentRepository {
 }
 
 class InMemoryWebhookEventRepository implements WebhookEventRepository {
-  private readonly recorded = new Map<string, WebhookEventRecord>();
+  private readonly events = new Map<
+    string,
+    { status: WebhookEventStatus; error?: string }
+  >();
 
-  async exists(provider: string, eventId: string): Promise<boolean> {
-    return this.recorded.has(`${provider}:${eventId}`);
-  }
-
-  async record(event: WebhookEventRecord): Promise<boolean> {
+  async claim(event: WebhookEventRecord): Promise<ClaimResult> {
     const key = `${event.provider}:${event.eventId}`;
-    if (this.recorded.has(key)) {
-      return false;
+    const existing = this.events.get(key);
+    if (!existing) {
+      this.events.set(key, { status: WebhookEventStatus.RECEIVED });
+      return 'new';
     }
-    this.recorded.set(key, event);
-    return true;
+    const done = [
+      WebhookEventStatus.PROCESSED,
+      WebhookEventStatus.IGNORED,
+      WebhookEventStatus.REQUIRES_REVIEW,
+    ];
+    return done.includes(existing.status) ? 'processed' : 'retry';
   }
 
   async markProcessed(provider: string, eventId: string): Promise<void> {
     const key = `${provider}:${eventId}`;
-    const existing = this.recorded.get(key);
-    if (existing) {
-      existing.status = 'PROCESSED';
-      existing.processedAt = new Date();
-    }
+    this.events.set(key, { status: WebhookEventStatus.PROCESSED });
+  }
+
+  async markFailed(
+    provider: string,
+    eventId: string,
+    error: string,
+  ): Promise<void> {
+    const key = `${provider}:${eventId}`;
+    this.events.set(key, { status: WebhookEventStatus.FAILED, error });
+  }
+
+  async markRequiresReview(
+    provider: string,
+    eventId: string,
+    reason: string,
+  ): Promise<void> {
+    const key = `${provider}:${eventId}`;
+    this.events.set(key, {
+      status: WebhookEventStatus.REQUIRES_REVIEW,
+      error: reason,
+    });
+  }
+
+  async exists(provider: string, eventId: string): Promise<boolean> {
+    return this.events.has(`${provider}:${eventId}`);
   }
 }
 
@@ -439,6 +467,8 @@ describe('Payment Gateway HTTP API (e2e)', () => {
         data: {
           object: {
             id: intentId,
+            amount_received: 7500,
+            currency: 'usd',
             metadata: { paymentId },
           },
         },

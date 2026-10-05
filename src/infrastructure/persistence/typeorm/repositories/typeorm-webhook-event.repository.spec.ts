@@ -1,106 +1,98 @@
 import { Repository } from 'typeorm';
 import { TypeOrmWebhookEventRepository } from './typeorm-webhook-event.repository';
-import {
-  WebhookEventSchema,
-  WebhookEventStatus,
-} from '../schemas/webhook-event.schema';
+import { WebhookEventSchema } from '../schemas/webhook-event.schema';
+import { WebhookEventStatus } from '@application/ports/webhook-event.repository';
 
 describe('TypeOrmWebhookEventRepository', () => {
   let repository: TypeOrmWebhookEventRepository;
   let mockRepo: jest.Mocked<Repository<WebhookEventSchema>>;
+  let mockQueryBuilder: any;
 
   beforeEach(() => {
+    mockQueryBuilder = {
+      insert: jest.fn().mockReturnThis(),
+      into: jest.fn().mockReturnThis(),
+      values: jest.fn().mockReturnThis(),
+      orIgnore: jest.fn().mockReturnThis(),
+      returning: jest.fn().mockReturnThis(),
+      execute: jest.fn(),
+    };
+
     mockRepo = {
-      count: jest.fn(),
-      create: jest.fn().mockImplementation((dto) => dto),
-      save: jest.fn(),
-      insert: jest.fn(),
-      update: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+      findOneByOrFail: jest.fn(),
+      update: jest.fn().mockResolvedValue({} as any),
     } as unknown as jest.Mocked<Repository<WebhookEventSchema>>;
 
     repository = new TypeOrmWebhookEventRepository(mockRepo);
   });
 
-  describe('exists()', () => {
-    it('should return true when count > 0', async () => {
-      mockRepo.count.mockResolvedValue(1);
+  describe('claim()', () => {
+    it('should return "new" when the event was inserted successfully', async () => {
+      mockQueryBuilder.execute.mockResolvedValueOnce({ raw: [{ id: 'evt-uuid-1' }] });
 
-      const result = await repository.exists('STRIPE', 'evt_123');
-
-      expect(result).toBe(true);
-      expect(mockRepo.count).toHaveBeenCalledWith({
-        where: { provider: 'STRIPE', eventId: 'evt_123' },
-      });
-    });
-
-    it('should return false when count === 0', async () => {
-      mockRepo.count.mockResolvedValue(0);
-
-      const result = await repository.exists('STRIPE', 'evt_999');
-
-      expect(result).toBe(false);
-    });
-  });
-
-  describe('record()', () => {
-    it('should create and insert webhook event entity and return true', async () => {
-      mockRepo.insert.mockResolvedValue({} as any);
-
-      const result = await repository.record({
+      const result = await repository.claim({
         id: 'evt-uuid-1',
-        eventId: 'evt_123',
+        eventId: 'evt_new_1',
         provider: 'STRIPE',
         eventType: 'payment_intent.succeeded',
-        payload: { id: 'pi_123' },
+        payload: { id: 'pi_1' },
       });
 
-      expect(result).toBe(true);
-      expect(mockRepo.create).toHaveBeenCalledWith(
+      expect(result).toBe('new');
+      expect(mockQueryBuilder.values).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'evt-uuid-1',
-          eventId: 'evt_123',
+          eventId: 'evt_new_1',
           provider: 'STRIPE',
-          eventType: 'payment_intent.succeeded',
           status: WebhookEventStatus.RECEIVED,
         }),
       );
-      expect(mockRepo.insert).toHaveBeenCalled();
     });
 
-    it('should return false on duplicate key error (code 23505)', async () => {
-      const error: any = new Error('duplicate key value');
-      error.code = '23505';
-      mockRepo.insert.mockRejectedValue(error);
-
-      const result = await repository.record({
+    it('should return "processed" when event already completed processing', async () => {
+      mockQueryBuilder.execute.mockResolvedValueOnce({ raw: [] });
+      mockRepo.findOneByOrFail.mockResolvedValueOnce({
         id: 'evt-uuid-1',
-        eventId: 'evt_123',
+        eventId: 'evt_done_1',
+        provider: 'STRIPE',
+        status: WebhookEventStatus.PROCESSED,
+      } as any);
+
+      const result = await repository.claim({
+        id: 'evt-uuid-1',
+        eventId: 'evt_done_1',
         provider: 'STRIPE',
         eventType: 'payment_intent.succeeded',
+        payload: { id: 'pi_1' },
       });
 
-      expect(result).toBe(false);
+      expect(result).toBe('processed');
     });
 
-    it('should rethrow non-duplicate errors', async () => {
-      const error = new Error('Database connection lost');
-      mockRepo.insert.mockRejectedValue(error);
+    it('should return "retry" when existing event was left in RECEIVED or FAILED status', async () => {
+      mockQueryBuilder.execute.mockResolvedValueOnce({ raw: [] });
+      mockRepo.findOneByOrFail.mockResolvedValueOnce({
+        id: 'evt-uuid-1',
+        eventId: 'evt_failed_1',
+        provider: 'STRIPE',
+        status: WebhookEventStatus.FAILED,
+      } as any);
 
-      await expect(
-        repository.record({
-          id: 'evt-uuid-1',
-          eventId: 'evt_123',
-          provider: 'STRIPE',
-          eventType: 'payment_intent.succeeded',
-        }),
-      ).rejects.toThrow('Database connection lost');
+      const result = await repository.claim({
+        id: 'evt-uuid-1',
+        eventId: 'evt_failed_1',
+        provider: 'STRIPE',
+        eventType: 'payment_intent.succeeded',
+        payload: { id: 'pi_1' },
+      });
+
+      expect(result).toBe('retry');
     });
   });
 
   describe('markProcessed()', () => {
     it('should update status to PROCESSED with processedAt', async () => {
-      mockRepo.update.mockResolvedValue({} as any);
-
       await repository.markProcessed('STRIPE', 'evt_123');
 
       expect(mockRepo.update).toHaveBeenCalledWith(
@@ -108,6 +100,34 @@ describe('TypeOrmWebhookEventRepository', () => {
         expect.objectContaining({
           status: WebhookEventStatus.PROCESSED,
           processedAt: expect.any(Date),
+        }),
+      );
+    });
+  });
+
+  describe('markFailed()', () => {
+    it('should update status to FAILED, record lastError and increment attempts', async () => {
+      await repository.markFailed('STRIPE', 'evt_123', 'Network error');
+
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        { provider: 'STRIPE', eventId: 'evt_123' },
+        expect.objectContaining({
+          status: WebhookEventStatus.FAILED,
+          lastError: 'Network error',
+        }),
+      );
+    });
+  });
+
+  describe('markRequiresReview()', () => {
+    it('should update status to REQUIRES_REVIEW and record lastError', async () => {
+      await repository.markRequiresReview('STRIPE', 'evt_123', 'Amount mismatch');
+
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        { provider: 'STRIPE', eventId: 'evt_123' },
+        expect.objectContaining({
+          status: WebhookEventStatus.REQUIRES_REVIEW,
+          lastError: 'Amount mismatch',
         }),
       );
     });
