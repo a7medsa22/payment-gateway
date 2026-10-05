@@ -7,7 +7,7 @@ import {
   RefundPaymentGatewayRequest,
   RefundPaymentGatewayResult,
 } from '@application/ports/payment-gateway.port';
-import { PaymentGatewayException } from './payment-gateway.exception';
+import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
 
 @Injectable()
 export class StripePaymentGateway implements PaymentGateway {
@@ -46,14 +46,18 @@ export class StripePaymentGateway implements PaymentGateway {
     request: RefundPaymentGatewayRequest,
   ): Promise<RefundPaymentGatewayResult> {
     try {
-      const refund = await this.stripe.refunds.create({
-        payment_intent: request.providerPaymentId,
-        amount: request.amount,
-        metadata: {
-          paymentId: request.paymentId,
-          ...(request.reason ? { reason: request.reason } : {}),
+      const refund = await this.stripe.refunds.create(
+        {
+          payment_intent: request.providerPaymentId,
+          amount: request.amount,
+          metadata: {
+            paymentId: request.paymentId,
+            refundTxId: request.refundTxId,
+            ...(request.reason ? { reason: request.reason } : {}),
+          },
         },
-      });
+        { idempotencyKey: `refund:${request.refundTxId}` },
+      );
 
       return {
         providerRefundId: refund.id,
@@ -84,7 +88,7 @@ export class StripePaymentGateway implements PaymentGateway {
 
   private handleStripeError(error: unknown): PaymentGatewayException {
     if (error instanceof Stripe.errors.StripeCardError) {
-      return new PaymentGatewayException(`Payment declined: ${error.message}`, {
+      return new PaymentGatewayException(`Payment declined: ${error.message}`, false, {
         cause: error,
       });
     }
@@ -92,6 +96,7 @@ export class StripePaymentGateway implements PaymentGateway {
     if (error instanceof Stripe.errors.StripeInvalidRequestError) {
       return new PaymentGatewayException(
         `Invalid payment request: ${error.message}`,
+        false,
         { cause: error },
       );
     }
@@ -99,6 +104,7 @@ export class StripePaymentGateway implements PaymentGateway {
     if (error instanceof Stripe.errors.StripeAuthenticationError) {
       return new PaymentGatewayException(
         'Payment provider authentication failed',
+        false,
         { cause: error },
       );
     }
@@ -106,12 +112,21 @@ export class StripePaymentGateway implements PaymentGateway {
     if (error instanceof Stripe.errors.StripeRateLimitError) {
       return new PaymentGatewayException(
         'Payment provider rate limit exceeded',
+        false,
+        { cause: error },
+      );
+    }
+
+    if (error instanceof Stripe.errors.StripeIdempotencyError) {
+      return new PaymentGatewayException(
+        `Payment provider idempotency error: ${error.message}`,
+        false,
         { cause: error },
       );
     }
 
     if (error instanceof Stripe.errors.StripeConnectionError) {
-      return new PaymentGatewayException('Payment provider unavailable', {
+      return new PaymentGatewayException('Payment provider unavailable', true, {
         cause: error,
       });
     }
@@ -119,11 +134,12 @@ export class StripePaymentGateway implements PaymentGateway {
     if (error instanceof Stripe.errors.StripeAPIError) {
       return new PaymentGatewayException(
         `Payment provider error: ${error.message}`,
+        true,
         { cause: error },
       );
     }
 
-    return new PaymentGatewayException('Unexpected payment provider error', {
+    return new PaymentGatewayException('Unexpected payment provider error', true, {
       cause: error,
     });
   }

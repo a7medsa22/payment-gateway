@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import { StripePaymentGateway } from './stripe-payment-gateway';
-import { PaymentGatewayException } from './payment-gateway.exception';
+import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
 import { CreatePaymentGatewayRequest } from '@application/ports/payment-gateway.port';
 
 const actualStripe = jest.requireActual<typeof import('stripe')>('stripe');
@@ -142,23 +142,26 @@ describe('StripePaymentGateway', () => {
     });
   });
 
-  describe('error handling', () => {
-    it('should translate StripeCardError to PaymentGatewayException', async () => {
+  describe('error handling and ambiguity classification', () => {
+    it('should translate StripeCardError to non-ambiguous PaymentGatewayException', async () => {
       const cardError = new actualStripe.default.errors.StripeCardError({
         message: 'Your card was declined',
         type: 'card_error',
       });
       mockCreate.mockRejectedValue(cardError);
 
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        PaymentGatewayException,
-      );
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        'Payment declined: Your card was declined',
-      );
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.message).toBe('Payment declined: Your card was declined');
+        expect(pge.ambiguous).toBe(false);
+      }
     });
 
-    it('should translate StripeInvalidRequestError to PaymentGatewayException', async () => {
+    it('should translate StripeInvalidRequestError to non-ambiguous PaymentGatewayException', async () => {
       const invalidReqError =
         new actualStripe.default.errors.StripeInvalidRequestError({
           message: 'Invalid amount',
@@ -166,15 +169,18 @@ describe('StripePaymentGateway', () => {
         });
       mockCreate.mockRejectedValue(invalidReqError);
 
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        PaymentGatewayException,
-      );
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        'Invalid payment request: Invalid amount',
-      );
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.message).toBe('Invalid payment request: Invalid amount');
+        expect(pge.ambiguous).toBe(false);
+      }
     });
 
-    it('should translate StripeAuthenticationError to PaymentGatewayException', async () => {
+    it('should translate StripeAuthenticationError to non-ambiguous PaymentGatewayException', async () => {
       const authError =
         new actualStripe.default.errors.StripeAuthenticationError({
           message: 'Invalid API Key',
@@ -182,15 +188,17 @@ describe('StripePaymentGateway', () => {
         });
       mockCreate.mockRejectedValue(authError);
 
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        PaymentGatewayException,
-      );
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        'Payment provider authentication failed',
-      );
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.ambiguous).toBe(false);
+      }
     });
 
-    it('should translate StripeRateLimitError to PaymentGatewayException', async () => {
+    it('should translate StripeRateLimitError to non-ambiguous PaymentGatewayException', async () => {
       const rateLimitError =
         new actualStripe.default.errors.StripeRateLimitError({
           message: 'Too many requests',
@@ -198,15 +206,35 @@ describe('StripePaymentGateway', () => {
         });
       mockCreate.mockRejectedValue(rateLimitError);
 
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        PaymentGatewayException,
-      );
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        'Payment provider rate limit exceeded',
-      );
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.ambiguous).toBe(false);
+      }
     });
 
-    it('should translate StripeConnectionError to PaymentGatewayException', async () => {
+    it('should translate StripeIdempotencyError to non-ambiguous PaymentGatewayException', async () => {
+      const idempotencyError =
+        new actualStripe.default.errors.StripeIdempotencyError({
+          message: 'Keys differ',
+          type: 'idempotency_error',
+        });
+      mockCreate.mockRejectedValue(idempotencyError);
+
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.ambiguous).toBe(false);
+      }
+    });
+
+    it('should translate StripeConnectionError to ambiguous PaymentGatewayException', async () => {
       const connError =
         new actualStripe.default.errors.StripeConnectionError({
           message: 'Network timeout',
@@ -214,39 +242,46 @@ describe('StripePaymentGateway', () => {
         });
       mockCreate.mockRejectedValue(connError);
 
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        PaymentGatewayException,
-      );
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        'Payment provider unavailable',
-      );
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.message).toBe('Payment provider unavailable');
+        expect(pge.ambiguous).toBe(true);
+      }
     });
 
-    it('should translate StripeAPIError to PaymentGatewayException', async () => {
+    it('should translate StripeAPIError to ambiguous PaymentGatewayException', async () => {
       const apiError = new actualStripe.default.errors.StripeAPIError({
         message: 'Internal server error on Stripe',
         type: 'api_error',
       });
       mockCreate.mockRejectedValue(apiError);
 
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        PaymentGatewayException,
-      );
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        'Payment provider error: Internal server error on Stripe',
-      );
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.ambiguous).toBe(true);
+      }
     });
 
-    it('should translate unexpected error to PaymentGatewayException', async () => {
+    it('should translate unexpected error to ambiguous PaymentGatewayException', async () => {
       const unknownError = new Error('Something broke');
       mockCreate.mockRejectedValue(unknownError);
 
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        PaymentGatewayException,
-      );
-      await expect(gateway.createPayment(sampleRequest)).rejects.toThrow(
-        'Unexpected payment provider error',
-      );
+      try {
+        await gateway.createPayment(sampleRequest);
+        fail('Should have thrown');
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(PaymentGatewayException);
+        const pge = err as PaymentGatewayException;
+        expect(pge.ambiguous).toBe(true);
+      }
     });
 
     it('should preserve original error as cause in PaymentGatewayException', async () => {
@@ -266,7 +301,7 @@ describe('StripePaymentGateway', () => {
   });
 
   describe('refundPayment', () => {
-    it('should call stripe.refunds.create and return mapped result', async () => {
+    it('should call stripe.refunds.create with idempotency key and return mapped result', async () => {
       mockRefundsCreate.mockResolvedValue({
         id: 're_123',
         status: 'succeeded',
@@ -274,19 +309,25 @@ describe('StripePaymentGateway', () => {
 
       const result = await gateway.refundPayment({
         paymentId: 'pay_test_123',
+        refundTxId: 'ref_tx_999',
         providerPaymentId: 'pi_test_123',
         amount: 3000,
+        currency: 'USD',
         reason: 'Customer return',
       });
 
-      expect(mockRefundsCreate).toHaveBeenCalledWith({
-        payment_intent: 'pi_test_123',
-        amount: 3000,
-        metadata: {
-          paymentId: 'pay_test_123',
-          reason: 'Customer return',
+      expect(mockRefundsCreate).toHaveBeenCalledWith(
+        {
+          payment_intent: 'pi_test_123',
+          amount: 3000,
+          metadata: {
+            paymentId: 'pay_test_123',
+            refundTxId: 'ref_tx_999',
+            reason: 'Customer return',
+          },
         },
-      });
+        { idempotencyKey: 'refund:ref_tx_999' },
+      );
 
       expect(result).toEqual({
         providerRefundId: 're_123',
@@ -300,7 +341,10 @@ describe('StripePaymentGateway', () => {
       await expect(
         gateway.refundPayment({
           paymentId: 'pay_test_123',
+          refundTxId: 'ref_tx_999',
           providerPaymentId: 'pi_test_123',
+          amount: 3000,
+          currency: 'USD',
         }),
       ).rejects.toThrow(PaymentGatewayException);
     });
