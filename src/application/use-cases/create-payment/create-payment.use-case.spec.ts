@@ -7,6 +7,7 @@ import {
 } from '@application/ports/payment-gateway.port';
 import { PaymentProvider, PaymentStatus } from '@domain/enums';
 import { DomainException } from '@domain/exceptions/domain.exception';
+import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
 import { Payment } from '@domain/aggregates/payment.aggregate';
 
 describe('CreatePaymentUseCase', () => {
@@ -112,14 +113,14 @@ describe('CreatePaymentUseCase', () => {
     ]);
   });
 
-  it('should mark payment as FAILED and save when gateway throws an error', async () => {
+  it('should mark payment as FAILED and save when gateway throws a non-ambiguous error', async () => {
     const savedStatuses: PaymentStatus[] = [];
     mockPaymentRepository.save.mockImplementation(async (payment) => {
       savedStatuses.push(payment.status);
     });
 
     mockPaymentGateway.createPayment.mockRejectedValueOnce(
-      new Error('Stripe network timeout'),
+      new PaymentGatewayException('Card declined', false),
     );
 
     await expect(
@@ -130,12 +131,48 @@ describe('CreatePaymentUseCase', () => {
         currency: 'USD',
         provider: 'stripe',
       }),
-    ).rejects.toThrow('Stripe network timeout');
+    ).rejects.toThrow('Card declined');
 
     expect(mockPaymentRepository.save).toHaveBeenCalledTimes(2);
     expect(savedStatuses).toEqual([PaymentStatus.PENDING, PaymentStatus.FAILED]);
     const failedPayment: Payment = mockPaymentRepository.save.mock.calls[1][0];
-    expect(failedPayment.errorCode).toBe('provider_error');
+    expect(failedPayment.errorCode).toBe('provider_rejected');
+  });
+
+  it('should keep payment in PENDING status without marking FAILED when gateway throws an ambiguous error', async () => {
+    mockPaymentGateway.createPayment.mockRejectedValueOnce(
+      new PaymentGatewayException('Connection timeout', true),
+    );
+
+    await expect(
+      useCase.execute({
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: '50.00',
+        currency: 'USD',
+        provider: 'stripe',
+      }),
+    ).rejects.toThrow('Connection timeout');
+
+    // Only the initial persist (PENDING) is done, never marked FAILED
+    expect(mockPaymentRepository.save).toHaveBeenCalledTimes(1);
+    const pendingPayment: Payment = mockPaymentRepository.save.mock.calls[0][0];
+    expect(pendingPayment.status).toBe(PaymentStatus.PENDING);
+  });
+
+  it('should reject amounts with unsupported currency precision before saving', async () => {
+    await expect(
+      useCase.execute({
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: '50.5555',
+        currency: 'USD',
+        provider: 'stripe',
+      }),
+    ).rejects.toThrow('USD supports at most 2 decimal places');
+
+    expect(mockPaymentRepository.save).not.toHaveBeenCalled();
+    expect(mockPaymentGateway.createPayment).not.toHaveBeenCalled();
   });
 
   it('should keep payment in PENDING status when gateway returns pending and store providerPaymentId', async () => {

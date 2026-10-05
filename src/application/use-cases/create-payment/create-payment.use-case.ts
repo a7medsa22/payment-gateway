@@ -5,6 +5,7 @@ import { Money } from '@domain/value-objects/money.vo';
 import { FailureReason } from '@domain/enums';
 import { Payment } from '@domain/aggregates/payment.aggregate';
 import { PaymentResultDto } from '@application/dtos/payment-result.dto';
+import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
 import {
   validateCurrency,
   validateProvider,
@@ -21,6 +22,7 @@ export class CreatePaymentUseCase {
     const currency = validateCurrency(input.currency);
     const provider = validateProvider(input.provider);
     const money = Money.from(input.amount, currency);
+    money.assertCurrencyPrecision();
 
     // 2. Create Payment aggregate
     const id = crypto.randomUUID();
@@ -50,8 +52,18 @@ export class CreatePaymentUseCase {
         description: input.description,
       });
     } catch (error) {
-      payment.fail('provider_error', FailureReason.PROVIDER_ERROR);
-      await this.paymentRepository.save(payment);
+      if (error instanceof PaymentGatewayException && !error.ambiguous) {
+        payment.fail('provider_rejected', FailureReason.PROVIDER_ERROR);
+        try {
+          await this.paymentRepository.save(payment);
+        } catch (saveError) {
+          throw new AggregateError(
+            [error, saveError],
+            'Gateway rejected payment and FAILED state could not be persisted',
+          );
+        }
+      }
+      // ambiguous → payment stays PENDING. Resolved by an idempotent retry or by reconciliation.
       throw error;
     }
 
