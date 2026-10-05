@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { join } from 'path';
 import * as dotenv from 'dotenv';
 import { PaymentSchema } from './schemas/payment.schema';
 import { TransactionSchema } from './schemas/transaction.schema';
@@ -15,7 +16,7 @@ export default new DataSource({
   password: process.env.DATABASE_PASSWORD || 'postgres',
   database: process.env.DATABASE_NAME || 'payment_service',
   entities: [PaymentSchema, TransactionSchema, WebhookEventSchema, ApiKeySchema],
-  migrations: ['src/infrastructure/persistence/typeorm/migrations/*.ts'],
-  synchronize: process.env.NODE_ENV !== 'production',
+  migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
+  synchronize: false,
   logging: process.env.NODE_ENV === 'development',
 });

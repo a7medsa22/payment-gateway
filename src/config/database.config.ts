@@ -7,7 +7,7 @@ export default registerAs('database', () => ({
   username: process.env.DATABASE_USER || 'postgres',
   password: process.env.DATABASE_PASSWORD || 'postgres',
   database: process.env.DATABASE_NAME || 'payment_service',
-  synchronize: process.env.NODE_ENV !== 'production',
+  synchronize: process.env.DB_SYNCHRONIZE === 'true',
   logging: process.env.NODE_ENV === 'development',
   pool: {
     max: parseInt(process.env.DB_POOL_MAX || '50', 10),

@@ -13,7 +13,10 @@ import { TransactionSchema } from './transaction.schema';
 @Entity('payments')
 @Index('idx_payments_user_id', ['userId'])
 @Index('idx_payments_status', ['status'])
-@Index('idx_payments_provider_payment_id', ['providerPaymentId'])
+@Index('idx_payments_provider_payment_id', ['providerPaymentId'], {
+  unique: true,
+  where: '"provider_payment_id" IS NOT NULL',
+})
 export class PaymentSchema {
   @PrimaryColumn('uuid')
   id!: string;
