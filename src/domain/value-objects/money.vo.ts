@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import { Currency } from '@domain/enums';
+import { DomainException } from '@domain/exceptions/domain.exception';
 
 export class Money {
   private readonly _amount: Decimal;
@@ -122,12 +123,35 @@ export class Money {
 
   // Utility methods
 
+  static getCurrencyFactor(currency: string): number {
+    const THREE_DECIMAL = new Set(['BHD', 'KWD', 'OMR']);
+    const ZERO_DECIMAL = new Set(['JPY', 'KRW', 'UGX', 'VND']);
+
+    if (THREE_DECIMAL.has(currency)) return 1000;
+    if (ZERO_DECIMAL.has(currency)) return 1;
+    return 100;
+  }
+
+  static decimalsFor(currency: string): number {
+    return Math.log10(Money.getCurrencyFactor(currency));
+  }
+
+  /** Throws if the amount can't be represented exactly in the currency's minor unit. */
+  assertCurrencyPrecision(): void {
+    const units = this._amount.times(Money.getCurrencyFactor(this._currency));
+    if (!units.isInteger()) {
+      throw new DomainException(
+        `${this._currency} supports at most ${Money.decimalsFor(this._currency)} decimal places`,
+      );
+    }
+  }
+
   /**
    * Convert to smallest currency unit (e.g. cents for USD, fils for KWD/BHD/OMR)
    */
   toSmallestUnit(): number {
-    const factor = Money.getCurrencyFactor(this._currency);
-    return this._amount.times(factor).round().toNumber();
+    this.assertCurrencyPrecision();
+    return this._amount.times(Money.getCurrencyFactor(this._currency)).toNumber();
   }
 
   /**
@@ -151,15 +175,6 @@ export class Money {
    */
   static fromCents(cents: number, currency: Currency): Money {
     return Money.fromSmallestUnit(cents, currency);
-  }
-
-  private static getCurrencyFactor(currency: string): number {
-    const THREE_DECIMAL = new Set(['BHD', 'KWD', 'OMR']);
-    const ZERO_DECIMAL = new Set(['JPY', 'KRW', 'UGX', 'VND']);
-
-    if (THREE_DECIMAL.has(currency)) return 1000;
-    if (ZERO_DECIMAL.has(currency)) return 1;
-    return 100;
   }
 
   /**

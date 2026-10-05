@@ -148,6 +148,18 @@ describe('Money Value Object', () => {
       expect(restored.equals(money)).toBe(true);
     });
 
+    it('should throw DomainException when converting sub-unit precision amounts to smallest unit', () => {
+      const invalidUsd = Money.from('10.5555', 'USD');
+      expect(() => invalidUsd.toSmallestUnit()).toThrow(
+        'USD supports at most 2 decimal places',
+      );
+
+      const invalidKwd = Money.from('1.5555', 'KWD');
+      expect(() => invalidKwd.toSmallestUnit()).toThrow(
+        'KWD supports at most 3 decimal places',
+      );
+    });
+
     it('should correctly convert 3-decimal currencies (KWD, BHD, OMR) by factor 1000', () => {
       const kwd = Money.from('1.500', 'KWD');
       expect(kwd.toSmallestUnit()).toBe(1500);
