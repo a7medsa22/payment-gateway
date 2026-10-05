@@ -23,13 +23,13 @@ export class CreatePaymentRequestDto {
   userId!: string;
 
   @ApiProperty({
-    description: 'Payment amount as a decimal string (up to 4 decimal places)',
+    description: 'Payment amount as a decimal string (up to 3 decimal places)',
     example: '49.99',
   })
   @IsNotEmpty()
   @IsString()
-  @Matches(/^\d+(\.\d{1,4})?$/, {
-    message: 'amount must be a valid positive decimal string with up to 4 decimal places',
+  @Matches(/^\d+(\.\d{1,3})?$/, {
+    message: 'amount must be a valid positive decimal string with up to 3 decimal places',
   })
   amount!: string;
 

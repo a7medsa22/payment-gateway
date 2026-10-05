@@ -11,10 +11,10 @@ import {
   DomainException,
   PaymentException,
   PaymentNotFoundException,
+  ConcurrencyException,
 } from '@domain/exceptions/domain.exception';
 import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
-import { PaymentGatewayException } from '@infrastructure/gateways/payment-gateway.exception';
-import { OptimisticLockVersionMismatchError } from 'typeorm';
+import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -34,6 +34,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.FORBIDDEN;
       error = 'ForbiddenAccessException';
       message = exception.message;
+    } else if (exception instanceof ConcurrencyException) {
+      statusCode = HttpStatus.CONFLICT;
+      error = 'ConflictException';
+      message = exception.message;
     } else if (exception instanceof PaymentNotFoundException) {
       statusCode = HttpStatus.NOT_FOUND;
       error = 'PaymentNotFoundException';
@@ -50,10 +54,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.BAD_GATEWAY;
       error = 'PaymentGatewayException';
       message = exception.message;
-    } else if (exception instanceof OptimisticLockVersionMismatchError) {
-      statusCode = HttpStatus.CONFLICT;
-      error = 'ConflictException';
-      message = 'Resource was updated by another request. Please retry.';
     } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const res = exception.getResponse();
