@@ -105,25 +105,43 @@ describe('Transaction Entity', () => {
       expect(txn.status).toBe(TransactionStatus.SUCCEEDED);
     });
 
-    it('should mark processing transaction as failed', () => {
-      const txn = createTestTransaction({ status: TransactionStatus.PROCESSING });
-      txn.markAsFailed(fixedClock);
+    it('should mark processing or pending transaction as failed', () => {
+      const txnProcessing = createTestTransaction({ status: TransactionStatus.PROCESSING });
+      txnProcessing.markAsFailed(fixedClock);
+      expect(txnProcessing.status).toBe(TransactionStatus.FAILED);
+      expect(txnProcessing.processedAt).toEqual(fixedDate);
+      expect(txnProcessing.isFailed()).toBe(true);
 
-      expect(txn.status).toBe(TransactionStatus.FAILED);
-      expect(txn.processedAt).toEqual(fixedDate);
-      expect(txn.isFailed()).toBe(true);
+      const txPending = createTestTransaction({ status: TransactionStatus.PENDING });
+      txPending.markAsFailed(fixedClock);
+      expect(txPending.status).toBe(TransactionStatus.FAILED);
     });
 
-    it('should throw when marking non-processing transaction as failed', () => {
-      const txn = createTestTransaction({ status: TransactionStatus.PENDING });
+    it('should throw when marking terminal transaction as failed', () => {
+      const txn = createTestTransaction({ status: TransactionStatus.SUCCEEDED });
       expect(() => txn.markAsFailed(fixedClock)).toThrow(
-        'Transaction must be processing to be failed',
+        'Transaction must be pending or processing to fail',
+      );
+    });
+
+    it('should attach provider transaction id and throw if mismatched', () => {
+      const txn = createTestTransaction();
+      txn.attachProviderTransactionId('re_stripe_123');
+      expect(txn.providerTransactionId).toBe('re_stripe_123');
+
+      // Idempotent with same id
+      txn.attachProviderTransactionId('re_stripe_123');
+      expect(txn.providerTransactionId).toBe('re_stripe_123');
+
+      // Throws on different id
+      expect(() => txn.attachProviderTransactionId('re_other')).toThrow(
+        'Provider transaction id already set',
       );
     });
   });
 
   describe('Query Methods', () => {
-    it('should correctly identify refund transactions', () => {
+    it('should correctly identify refund transactions and pending status', () => {
       const chargeTxn = createTestTransaction({ type: TransactionType.CHARGE });
       const refundTxn = createTestTransaction({ type: TransactionType.REFUND });
       const partialRefundTxn = createTestTransaction({
@@ -133,6 +151,7 @@ describe('Transaction Entity', () => {
       expect(chargeTxn.isRefund()).toBe(false);
       expect(refundTxn.isRefund()).toBe(true);
       expect(partialRefundTxn.isRefund()).toBe(true);
+      expect(refundTxn.isPending()).toBe(true);
     });
   });
 

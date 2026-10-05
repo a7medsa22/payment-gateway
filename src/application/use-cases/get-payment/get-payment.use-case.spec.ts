@@ -6,7 +6,6 @@ import { PaymentProvider, PaymentStatus } from '@domain/enums';
 import {
   PaymentNotFoundException,
 } from '@domain/exceptions/domain.exception';
-import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 
 describe('GetPaymentUseCase', () => {
   let useCase: GetPaymentUseCase;
@@ -61,7 +60,7 @@ describe('GetPaymentUseCase', () => {
     );
   });
 
-  it('should throw ForbiddenAccessException when merchantId does not match payment owner', async () => {
+  it('should throw PaymentNotFoundException when merchantId does not match payment owner (single 404 rule)', async () => {
     const payment = Payment.create({
       id: 'pay-get-2',
       merchantId: 'owner-merchant',
@@ -72,7 +71,7 @@ describe('GetPaymentUseCase', () => {
     paymentRepository.findById.mockResolvedValue(payment);
 
     await expect(useCase.execute('pay-get-2', 'other-merchant')).rejects.toThrow(
-      ForbiddenAccessException,
+      PaymentNotFoundException,
     );
   });
 });

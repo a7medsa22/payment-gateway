@@ -1,7 +1,6 @@
 import { PaymentRepository } from '@application/ports/payment.repository';
 import { PaymentDetailDto } from '@application/dtos/payment-detail.dto';
 import { PaymentNotFoundException } from '@domain/exceptions/domain.exception';
-import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 
 export class GetPaymentUseCase {
   constructor(private readonly paymentRepository: PaymentRepository) {}
@@ -9,15 +8,9 @@ export class GetPaymentUseCase {
   async execute(paymentId: string, merchantId: string): Promise<PaymentDetailDto> {
     const payment = await this.paymentRepository.findById(paymentId);
 
-    if (!payment) {
+    if (!payment || payment.merchantId !== merchantId) {
       throw new PaymentNotFoundException(
         `Payment with ID ${paymentId} not found`,
-      );
-    }
-
-    if (payment.merchantId !== merchantId) {
-      throw new ForbiddenAccessException(
-        'You do not have permission to access this payment',
       );
     }
 

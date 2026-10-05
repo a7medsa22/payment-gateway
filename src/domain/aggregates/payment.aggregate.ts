@@ -77,7 +77,7 @@ export class Payment {
   private readonly _createdAt: Date;
   private _updatedAt: Date;
   private readonly _clock: Clock;
-  private readonly _version?: number;
+  private _version?: number;
 
   private constructor(props: PaymentCtorProps, clock: Clock) {
     this._id = props.id;
@@ -216,6 +216,13 @@ export class Payment {
     );
   }
 
+  get pendingRefundTotal(): Money {
+    return this._transactions
+      .filter((t) => t.isRefund() && t.isPending())
+      .reduce((acc, t) => acc.add(t.amount), Money.zero(this._amount.currency));
+  }
+
+  /** Charged − refunded − reserved (pending) refunds. */
   get refundableAmount(): Money {
     if (
       this._status !== PaymentStatus.SUCCEEDED &&
@@ -223,7 +230,9 @@ export class Payment {
     ) {
       return Money.zero(this._amount.currency);
     }
-    return this.totalCharged.subtract(this.totalRefunded);
+    return this.totalCharged
+      .subtract(this.totalRefunded)
+      .subtract(this.pendingRefundTotal);
   }
 
   get succeededAt(): Date | undefined {
@@ -256,6 +265,11 @@ export class Payment {
 
   get version(): number | undefined {
     return this._version;
+  }
+
+  /** @internal Called by the repository after a successful write. */
+  markPersisted(version: number): void {
+    this._version = version;
   }
 
   setProviderPaymentId(providerPaymentId: string): void {
@@ -368,11 +382,74 @@ export class Payment {
     this._updatedAt = now;
   }
 
+  /** Step 1: reserve funds as a PENDING refund transaction. Status unchanged. */
+  requestRefund(refundAmount?: Money, reason?: string): Transaction {
+    const effective = refundAmount ?? this.refundableAmount;
+    this.assertRefundable(effective); // single source of truth (M2)
+
+    const isFull = this.totalRefunded
+      .add(this.pendingRefundTotal)
+      .add(effective)
+      .equals(this.totalCharged);
+
+    const tx = Transaction.createInternal(
+      {
+        id: crypto.randomUUID(),
+        paymentId: this._id,
+        type: isFull ? TransactionType.REFUND : TransactionType.PARTIAL_REFUND,
+        status: TransactionStatus.PENDING,
+        amount: effective,
+        provider: this._provider,
+        description: reason ?? (isFull ? 'Full refund' : 'Partial refund'),
+      },
+      this._clock,
+    );
+    this._transactions.push(tx);
+    this._updatedAt = this._clock.now();
+    return tx;
+  }
+
+  /** Step 2a: provider confirmed. Idempotent. */
+  confirmRefund(refundTxId: string, providerRefundId?: string): void {
+    const tx = this.getRefundTx(refundTxId);
+    if (tx.isSuccessful()) return;
+    if (providerRefundId) tx.attachProviderTransactionId(providerRefundId);
+    tx.markAsSucceeded(this._clock);
+
+    const now = this._clock.now();
+    const fullyRefunded = this.totalRefunded.equals(this.totalCharged);
+    this._status = fullyRefunded
+      ? PaymentStatus.REFUNDED
+      : PaymentStatus.PARTIALLY_REFUNDED;
+    if (fullyRefunded) this._refundedAt = now;
+    this._updatedAt = now;
+  }
+
+  /** Step 2b: provider accepted but still processing. */
+  markRefundPending(refundTxId: string, providerRefundId: string): void {
+    this.getRefundTx(refundTxId).attachProviderTransactionId(providerRefundId);
+    this._updatedAt = this._clock.now();
+  }
+
+  /** Step 2c: provider definitively rejected → releases the reserved amount. Idempotent. */
+  failRefund(refundTxId: string): void {
+    const tx = this.getRefundTx(refundTxId);
+    if (tx.isFailed()) return;
+    tx.markAsFailed(this._clock);
+    this._updatedAt = this._clock.now();
+  }
+
+  /** @deprecated Use requestRefund + confirmRefund */
   refund(
     refundAmount?: Money,
     reason?: string,
     providerRefundId?: string,
   ): void {
+    const tx = this.requestRefund(refundAmount, reason);
+    this.confirmRefund(tx.id, providerRefundId);
+  }
+
+  private assertRefundable(amount: Money): void {
     if (
       this._status !== PaymentStatus.SUCCEEDED &&
       this._status !== PaymentStatus.PARTIALLY_REFUNDED
@@ -381,57 +458,31 @@ export class Payment {
         `Cannot refund payment from status: ${this._status}`,
       );
     }
-
-    const effectiveAmount = refundAmount ?? this.refundableAmount;
-
-    if (effectiveAmount.isZero() || !effectiveAmount.isPositive()) {
+    if (!this._providerPaymentId) {
+      throw new PaymentException(
+        'Cannot refund payment without provider payment ID',
+      );
+    }
+    if (amount.isZero() || !amount.isPositive()) {
       throw new DomainException('Refund amount must be positive');
     }
-
-    if (effectiveAmount.currency !== this._amount.currency) {
+    if (amount.currency !== this._amount.currency) {
       throw new DomainException(
-        `Refund currency mismatch: expected ${this._amount.currency}, got ${effectiveAmount.currency}`,
+        `Refund currency mismatch: expected ${this._amount.currency}, got ${amount.currency}`,
       );
     }
-
-    if (effectiveAmount.isGreaterThan(this.refundableAmount)) {
+    amount.assertCurrencyPrecision(); // M1, see 1.5.6
+    if (amount.isGreaterThan(this.refundableAmount)) {
       throw new DomainException(
-        `Refund amount (${effectiveAmount.amount}) exceeds refundable amount (${this.refundableAmount.amount})`,
+        `Refund amount (${amount.amount}) exceeds refundable amount (${this.refundableAmount.amount})`,
       );
     }
+  }
 
-    const now = this._clock.now();
-    const newTotalRefunded = this.totalRefunded.add(effectiveAmount);
-    const isFullRefund = newTotalRefunded.equals(this.totalCharged);
-
-    const txType = isFullRefund
-      ? TransactionType.REFUND
-      : TransactionType.PARTIAL_REFUND;
-
-    this._status = isFullRefund
-      ? PaymentStatus.REFUNDED
-      : PaymentStatus.PARTIALLY_REFUNDED;
-
-    if (isFullRefund) {
-      this._refundedAt = now;
-    }
-    this._updatedAt = now;
-
-    const refundTx = Transaction.createInternal(
-      {
-        id: crypto.randomUUID(),
-        paymentId: this._id,
-        type: txType,
-        status: TransactionStatus.SUCCEEDED,
-        amount: effectiveAmount,
-        provider: this._provider,
-        providerTransactionId: providerRefundId,
-        description: reason ?? (isFullRefund ? 'Full refund' : 'Partial refund'),
-        processedAt: now,
-      },
-      this._clock,
-    );
-    this._transactions.push(refundTx);
+  private getRefundTx(id: string): Transaction {
+    const tx = this._transactions.find((t) => t.id === id && t.isRefund());
+    if (!tx) throw new DomainException(`Refund transaction ${id} not found`);
+    return tx;
   }
 
   private ensureStatus(action: string, ...statuses: PaymentStatus[]): void {

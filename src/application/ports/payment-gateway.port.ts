@@ -15,8 +15,10 @@ export interface CreatePaymentGatewayResult {
 
 export interface RefundPaymentGatewayRequest {
   paymentId: string;
+  refundTxId: string;
   providerPaymentId: string;
-  amount?: number;
+  amount: number;
+  currency: Currency;
   reason?: string;
 }
 

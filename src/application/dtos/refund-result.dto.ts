@@ -7,5 +7,6 @@ export interface RefundResultDto {
   refundableAmount: string;
   refundedAt?: Date;
   refundTransactionId?: string;
+  refundStatus?: 'succeeded' | 'pending';
   reason?: string;
 }

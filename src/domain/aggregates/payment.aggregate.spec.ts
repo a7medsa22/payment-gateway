@@ -577,5 +577,59 @@ describe('Payment Aggregate', () => {
       const refundTx = payment.transactions[1];
       expect(refundTx.description).toBe('Duplicate order by customer');
     });
+
+    describe('reserve-execute-confirm refund lifecycle', () => {
+      it('should reserve funds with requestRefund creating a PENDING transaction', () => {
+        const payment = createSucceededPayment();
+        const tx = payment.requestRefund(Money.from('40.00', 'USD'), 'Reservation test');
+
+        expect(tx.status).toBe(TransactionStatus.PENDING);
+        expect(tx.amount.amount).toBe('40.0000');
+        expect(payment.pendingRefundTotal.amount).toBe('40.0000');
+        expect(payment.refundableAmount.amount).toBe('60.0000');
+        expect(payment.status).toBe(PaymentStatus.SUCCEEDED); // Status doesn't change on reserve
+      });
+
+      it('should confirm refund with confirmRefund and update status', () => {
+        const payment = createSucceededPayment();
+        const tx = payment.requestRefund(Money.from('100.00', 'USD'));
+        payment.confirmRefund(tx.id, 're_stripe_confirm');
+
+        expect(payment.status).toBe(PaymentStatus.REFUNDED);
+        expect(payment.totalRefunded.amount).toBe('100.0000');
+        expect(payment.pendingRefundTotal.amount).toBe('0.0000');
+        expect(payment.refundableAmount.amount).toBe('0.0000');
+        expect(tx.status).toBe(TransactionStatus.SUCCEEDED);
+        expect(tx.providerTransactionId).toBe('re_stripe_confirm');
+      });
+
+      it('should attach provider refund id during markRefundPending without succeeding', () => {
+        const payment = createSucceededPayment();
+        const tx = payment.requestRefund(Money.from('50.00', 'USD'));
+        payment.markRefundPending(tx.id, 're_stripe_pending');
+
+        expect(payment.status).toBe(PaymentStatus.SUCCEEDED);
+        expect(tx.status).toBe(TransactionStatus.PENDING);
+        expect(tx.providerTransactionId).toBe('re_stripe_pending');
+      });
+
+      it('should fail refund with failRefund and release reserved amount', () => {
+        const payment = createSucceededPayment();
+        const tx = payment.requestRefund(Money.from('60.00', 'USD'));
+        expect(payment.refundableAmount.amount).toBe('40.0000');
+
+        payment.failRefund(tx.id);
+        expect(tx.status).toBe(TransactionStatus.FAILED);
+        expect(payment.pendingRefundTotal.amount).toBe('0.0000');
+        expect(payment.refundableAmount.amount).toBe('100.0000');
+        expect(payment.status).toBe(PaymentStatus.SUCCEEDED);
+      });
+
+      it('should throw when confirming or failing a non-existent refund transaction', () => {
+        const payment = createSucceededPayment();
+        expect(() => payment.confirmRefund('invalid-tx')).toThrow('Refund transaction invalid-tx not found');
+        expect(() => payment.failRefund('invalid-tx')).toThrow('Refund transaction invalid-tx not found');
+      });
+    });
   });
 });

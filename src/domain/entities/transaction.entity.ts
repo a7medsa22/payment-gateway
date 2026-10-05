@@ -144,15 +144,30 @@ export class Transaction {
     this._processedAt = clock.now();
   }
 
+  attachProviderTransactionId(id: string): void {
+    if (this._providerTransactionId && this._providerTransactionId !== id) {
+      throw new DomainException('Provider transaction id already set');
+    }
+    this._providerTransactionId = id;
+  }
+
   markAsFailed(clock: Clock = systemClock): void {
     if (this._status === TransactionStatus.FAILED) return;
-    if (this._status !== TransactionStatus.PROCESSING)
-      throw new DomainException('Transaction must be processing to be failed');
+    if (
+      this._status !== TransactionStatus.PROCESSING &&
+      this._status !== TransactionStatus.PENDING
+    ) {
+      throw new DomainException('Transaction must be pending or processing to fail');
+    }
     this._status = TransactionStatus.FAILED;
     this._processedAt = clock.now();
   }
 
   // Business rules
+  isPending(): boolean {
+    return this._status === TransactionStatus.PENDING;
+  }
+
   isSuccessful(): boolean {
     return this._status === TransactionStatus.SUCCEEDED;
   }
