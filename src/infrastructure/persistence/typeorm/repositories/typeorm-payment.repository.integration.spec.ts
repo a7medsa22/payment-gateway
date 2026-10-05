@@ -55,8 +55,7 @@ describe('TypeOrmPaymentRepository (Integration)', () => {
 
   beforeEach(async () => {
     if (!dbAvailable) return;
-    await transactionRepo.delete({});
-    await paymentRepo.delete({});
+    await dataSource.query('DELETE FROM transactions; DELETE FROM payments;');
   });
 
   it('1. should insert a new payment and read it back with identical values', async () => {

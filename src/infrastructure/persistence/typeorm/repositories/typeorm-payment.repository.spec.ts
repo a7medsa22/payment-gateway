@@ -13,9 +13,25 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
   let transactionRepo: jest.Mocked<Repository<TransactionSchema>>;
   let entityManager: jest.Mocked<EntityManager>;
 
+  let mockQueryBuilder: {
+    update: jest.Mock;
+    set: jest.Mock;
+    where: jest.Mock;
+    execute: jest.Mock;
+  };
+
   beforeEach(() => {
+    mockQueryBuilder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+
     entityManager = {
-      save: jest.fn().mockResolvedValue(undefined),
+      insert: jest.fn().mockResolvedValue(undefined),
+      upsert: jest.fn().mockResolvedValue(undefined),
+      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
     } as unknown as jest.Mocked<EntityManager>;
 
     dataSource = {
@@ -40,7 +56,7 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
   });
 
   describe('save()', () => {
-    it('should save payment and child transactions inside a database transaction', () => {
+    it('should INSERT a new aggregate with version 1 and upsert child transactions', async () => {
       const payment = Payment.create({
         id: 'pay-unit-1',
         merchantId: 'merchant-unit-1',
@@ -51,25 +67,27 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
       payment.start();
       payment.succeed('ch_unit_1');
 
-      return repository.save(payment).then(() => {
-        expect(dataSource.transaction).toHaveBeenCalledTimes(1);
-        expect(entityManager.save).toHaveBeenCalledWith(
-          PaymentSchema,
-          expect.objectContaining({ id: 'pay-unit-1' }),
-        );
-        expect(entityManager.save).toHaveBeenCalledWith(
-          TransactionSchema,
-          expect.arrayContaining([
-            expect.objectContaining({
-              paymentId: 'pay-unit-1',
-              providerTransactionId: 'ch_unit_1',
-            }),
-          ]),
-        );
-      });
+      await repository.save(payment);
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(entityManager.insert).toHaveBeenCalledWith(
+        PaymentSchema,
+        expect.objectContaining({ id: 'pay-unit-1', version: 1 }),
+      );
+      expect(entityManager.upsert).toHaveBeenCalledWith(
+        TransactionSchema,
+        expect.arrayContaining([
+          expect.objectContaining({
+            paymentId: 'pay-unit-1',
+            providerTransactionId: 'ch_unit_1',
+          }),
+        ]),
+        { conflictPaths: ['id'], skipUpdateIfNoValuesChanged: true },
+      );
+      expect(payment.version).toBe(1);
     });
 
-    it('should not call transaction save for transactions if payment has no transactions', () => {
+    it('should not call transaction upsert if payment has no transactions', async () => {
       const payment = Payment.create({
         id: 'pay-no-tx',
         merchantId: 'merchant-unit-1',
@@ -78,18 +96,62 @@ describe('TypeOrmPaymentRepository (Unit Tests)', () => {
         provider: PaymentProvider.STRIPE,
       });
 
-      return repository.save(payment).then(() => {
-        expect(dataSource.transaction).toHaveBeenCalledTimes(1);
-        expect(entityManager.save).toHaveBeenCalledTimes(1);
-        expect(entityManager.save).toHaveBeenCalledWith(
-          PaymentSchema,
-          expect.objectContaining({ id: 'pay-no-tx' }),
-        );
+      await repository.save(payment);
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(entityManager.insert).toHaveBeenCalledTimes(1);
+      expect(entityManager.upsert).not.toHaveBeenCalled();
+      expect(payment.version).toBe(1);
+    });
+
+    it('should UPDATE an existing aggregate with version matching and increment version', async () => {
+      const payment = Payment.reconstitute({
+        id: 'pay-existing',
+        merchantId: 'merchant-unit-1',
+        userId: 'user-unit-1',
+        amount: Money.from('100.00', 'USD'),
+        status: PaymentStatus.PENDING,
+        provider: PaymentProvider.STRIPE,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
+
+      payment.succeed('ch_existing');
+
+      await repository.save(payment);
+
+      expect(mockQueryBuilder.update).toHaveBeenCalledWith(PaymentSchema);
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
+        'id = :id AND version = :version',
+        { id: 'pay-existing', version: 1 },
+      );
+      expect(mockQueryBuilder.execute).toHaveBeenCalled();
+      expect(payment.version).toBe(2);
+    });
+
+    it('should throw ConcurrencyException when affected rows is 0 on update', async () => {
+      mockQueryBuilder.execute.mockResolvedValueOnce({ affected: 0 });
+
+      const payment = Payment.reconstitute({
+        id: 'pay-conflict',
+        merchantId: 'merchant-unit-1',
+        userId: 'user-unit-1',
+        amount: Money.from('100.00', 'USD'),
+        status: PaymentStatus.PENDING,
+        provider: PaymentProvider.STRIPE,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await expect(repository.save(payment)).rejects.toThrow(
+        'Aggregate pay-conflict was modified concurrently. Please retry.',
+      );
     });
 
     it('should propagate errors from inside transaction callback', async () => {
-      entityManager.save.mockRejectedValueOnce(new Error('DB connection failed'));
+      entityManager.insert.mockRejectedValueOnce(new Error('DB connection failed'));
 
       const payment = Payment.create({
         id: 'pay-fail-tx',

@@ -19,3 +19,12 @@ export class PaymentNotFoundException extends PaymentException {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+export class ConcurrencyException extends DomainException {
+  constructor(aggregateId: string) {
+    super(`Aggregate ${aggregateId} was modified concurrently. Please retry.`);
+    this.name = 'ConcurrencyException';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+

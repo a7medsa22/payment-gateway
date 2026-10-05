@@ -4,9 +4,9 @@ import {
   DomainException,
   PaymentException,
   PaymentNotFoundException,
+  ConcurrencyException,
 } from '@domain/exceptions/domain.exception';
-import { PaymentGatewayException } from '@infrastructure/gateways/payment-gateway.exception';
-import { OptimisticLockVersionMismatchError } from 'typeorm';
+import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
 
 describe('HttpExceptionFilter', () => {
   let filter: HttpExceptionFilter;
@@ -82,7 +82,7 @@ describe('HttpExceptionFilter', () => {
   });
 
   it('should map PaymentGatewayException to 502', () => {
-    const error = new PaymentGatewayException('Stripe card declined');
+    const error = new PaymentGatewayException('Stripe card declined', false);
 
     filter.catch(error, mockHost);
 
@@ -111,8 +111,8 @@ describe('HttpExceptionFilter', () => {
     );
   });
 
-  it('should map OptimisticLockVersionMismatchError to 409 Conflict', () => {
-    const error = new OptimisticLockVersionMismatchError('PaymentSchema', 1, 2);
+  it('should map ConcurrencyException to 409 Conflict', () => {
+    const error = new ConcurrencyException('pay-123');
 
     filter.catch(error, mockHost);
 
@@ -121,7 +121,7 @@ describe('HttpExceptionFilter', () => {
       expect.objectContaining({
         statusCode: 409,
         error: 'ConflictException',
-        message: 'Resource was updated by another request. Please retry.',
+        message: 'Aggregate pay-123 was modified concurrently. Please retry.',
       }),
     );
   });
