@@ -28,6 +28,7 @@ export class PaymentMapper {
     paymentSchema.status = payment.status;
     paymentSchema.provider = payment.provider;
     paymentSchema.providerPaymentId = payment.providerPaymentId;
+    paymentSchema.idempotencyKey = payment.idempotencyKey;
     paymentSchema.paymentMethodType = payment.paymentMethodType;
     paymentSchema.description = payment.description;
     paymentSchema.errorCode = payment.errorCode;
@@ -53,6 +54,7 @@ export class PaymentMapper {
       txSchema.currency = tx.amount.currency;
       txSchema.provider = tx.provider;
       txSchema.providerTransactionId = tx.providerTransactionId;
+      txSchema.idempotencyKey = tx.idempotencyKey;
       txSchema.description = tx.description;
       txSchema.metadata = tx.metadata;
       txSchema.processedAt = tx.processedAt;
@@ -78,6 +80,7 @@ export class PaymentMapper {
         amount: Money.from(txSchema.amount, txSchema.currency as Currency),
         provider: txSchema.provider as PaymentProvider,
         providerTransactionId: txSchema.providerTransactionId,
+        idempotencyKey: txSchema.idempotencyKey,
         description: txSchema.description,
         metadata: txSchema.metadata,
         processedAt: txSchema.processedAt
@@ -100,6 +103,7 @@ export class PaymentMapper {
       status: paymentSchema.status as PaymentStatus,
       provider: paymentSchema.provider as PaymentProvider,
       providerPaymentId: paymentSchema.providerPaymentId,
+      idempotencyKey: paymentSchema.idempotencyKey,
       paymentMethodType: paymentSchema.paymentMethodType,
       description: paymentSchema.description,
       errorCode: paymentSchema.errorCode,

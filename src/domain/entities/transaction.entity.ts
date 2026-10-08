@@ -15,6 +15,7 @@ export interface TransactionProps {
   amount: Money;
   provider: PaymentProvider;
   providerTransactionId?: string;
+  idempotencyKey?: string;
   description?: string;
   metadata?: Record<string, unknown>;
   processedAt?: Date;
@@ -29,6 +30,7 @@ export class Transaction {
   private readonly _amount: Money;
   private _provider: PaymentProvider;
   private _providerTransactionId?: string;
+  private readonly _idempotencyKey?: string;
   private _description?: string;
   private _metadata?: Record<string, unknown>;
   private _processedAt?: Date;
@@ -43,6 +45,7 @@ export class Transaction {
     this._status = props.status;
     this._amount = props.amount;
     this._provider = props.provider;
+    this._idempotencyKey = props.idempotencyKey;
     this._description = props.description;
     this._providerTransactionId = props.providerTransactionId;
     this._metadata = Object.freeze(props.metadata ?? {});
@@ -104,6 +107,10 @@ export class Transaction {
 
   get providerTransactionId(): string | undefined {
     return this._providerTransactionId;
+  }
+
+  get idempotencyKey(): string | undefined {
+    return this._idempotencyKey;
   }
 
   get description(): string | undefined {

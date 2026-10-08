@@ -28,3 +28,11 @@ export class ConcurrencyException extends DomainException {
   }
 }
 
+export class IdempotencyKeyMismatchException extends DomainException {
+  constructor(message = 'Idempotency-Key reused with different parameters') {
+    super(message);
+    this.name = 'IdempotencyKeyMismatchException';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+

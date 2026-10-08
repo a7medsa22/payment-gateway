@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ConcurrencyException } from '@domain/exceptions/domain.exception';
+import { DuplicateIdempotencyKeyException } from '@application/exceptions/duplicate-idempotency-key.exception';
 import { PaymentRepository } from '@application/ports/payment.repository';
 import { Payment } from '@domain/aggregates/payment.aggregate';
 import { PaymentSchema } from '../schemas/payment.schema';
@@ -22,52 +23,64 @@ export class TypeOrmPaymentRepository implements PaymentRepository {
     const { paymentSchema, transactionSchemas } =
       PaymentMapper.toPersistence(payment);
 
-    const newVersion = await this.dataSource.transaction(async (manager) => {
-      let version: number;
+    try {
+      const newVersion = await this.dataSource.transaction(async (manager) => {
+        let version: number;
 
-      if (payment.version === undefined) {
-        // New aggregate → INSERT (fails on duplicate id)
-        paymentSchema.version = 1;
-        const { transactions, ...paymentInsertValues } = paymentSchema;
-        await manager.insert(PaymentSchema, paymentInsertValues as any);
-        version = 1;
-      } else {
-        // Existing aggregate → UPDATE … WHERE id = ? AND version = ?
-        const { id, version: _v, createdAt, transactions, ...cols } =
-          paymentSchema;
-        // undefined → null so cleared fields (e.g. errorCode) are actually cleared
-        const values = Object.fromEntries(
-          Object.entries(cols).map(([k, v]) => [k, v ?? null]),
-        );
+        if (payment.version === undefined) {
+          // New aggregate → INSERT (fails on duplicate id or duplicate idempotency key)
+          paymentSchema.version = 1;
+          const { transactions, ...paymentInsertValues } = paymentSchema;
+          await manager.insert(PaymentSchema, paymentInsertValues as any);
+          version = 1;
+        } else {
+          // Existing aggregate → UPDATE … WHERE id = ? AND version = ?
+          const { id, version: _v, createdAt, transactions, ...cols } =
+            paymentSchema;
+          // undefined → null so cleared fields (e.g. errorCode) are actually cleared
+          const values = Object.fromEntries(
+            Object.entries(cols).map(([k, v]) => [k, v ?? null]),
+          );
 
-        const result = await manager
-          .createQueryBuilder()
-          .update(PaymentSchema)
-          .set({ ...values, version: () => 'version + 1' })
-          .where('id = :id AND version = :version', {
-            id: payment.id,
-            version: payment.version,
-          })
-          .execute();
+          const result = await manager
+            .createQueryBuilder()
+            .update(PaymentSchema)
+            .set({ ...values, version: () => 'version + 1' })
+            .where('id = :id AND version = :version', {
+              id: payment.id,
+              version: payment.version,
+            })
+            .execute();
 
-        if (result.affected === 0) {
-          throw new ConcurrencyException(payment.id);
+          if (result.affected === 0) {
+            throw new ConcurrencyException(payment.id);
+          }
+          version = payment.version + 1;
         }
-        version = payment.version + 1;
+
+        // Upsert children: new refund txs are inserted, PENDING → SUCCEEDED updates apply
+        if (transactionSchemas.length > 0) {
+          await manager.upsert(TransactionSchema, transactionSchemas as any, {
+            conflictPaths: ['id'],
+            skipUpdateIfNoValuesChanged: true,
+          });
+        }
+
+        return version;
+      });
+
+      payment.markPersisted(newVersion);
+    } catch (error: any) {
+      if (
+        error?.code === '23505' &&
+        (error?.constraint === 'uq_payments_merchant_idempotency' ||
+          error?.detail?.includes('idempotency_key') ||
+          error?.message?.includes('uq_payments_merchant_idempotency'))
+      ) {
+        throw new DuplicateIdempotencyKeyException();
       }
-
-      // Upsert children: new refund txs are inserted, PENDING → SUCCEEDED updates apply
-      if (transactionSchemas.length > 0) {
-        await manager.upsert(TransactionSchema, transactionSchemas as any, {
-          conflictPaths: ['id'],
-          skipUpdateIfNoValuesChanged: true,
-        });
-      }
-
-      return version;
-    });
-
-    payment.markPersisted(newVersion);
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<Payment | null> {
@@ -92,6 +105,26 @@ export class TypeOrmPaymentRepository implements PaymentRepository {
   ): Promise<Payment | null> {
     const paymentSchema = await this.paymentRepo.findOne({
       where: { providerPaymentId },
+    });
+
+    if (!paymentSchema) {
+      return null;
+    }
+
+    const transactionSchemas = await this.transactionRepo.find({
+      where: { paymentId: paymentSchema.id },
+      order: { createdAt: 'ASC' },
+    });
+
+    return PaymentMapper.toDomain(paymentSchema, transactionSchemas);
+  }
+
+  async findByIdempotencyKey(
+    merchantId: string,
+    key: string,
+  ): Promise<Payment | null> {
+    const paymentSchema = await this.paymentRepo.findOne({
+      where: { merchantId, idempotencyKey: key },
     });
 
     if (!paymentSchema) {

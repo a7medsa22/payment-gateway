@@ -12,12 +12,24 @@ import { PaymentSchema } from './payment.schema';
 @Entity('transactions')
 @Index('idx_transactions_payment_id', ['paymentId'])
 @Index('idx_transactions_provider_tx_id', ['providerTransactionId'])
+@Index('uq_transactions_payment_idempotency', ['paymentId', 'idempotencyKey'], {
+  unique: true,
+  where: '"idempotency_key" IS NOT NULL',
+})
 export class TransactionSchema {
   @PrimaryColumn('uuid')
   id!: string;
 
   @Column({ name: 'payment_id', type: 'uuid' })
   paymentId!: string;
+
+  @Column({
+    name: 'idempotency_key',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  idempotencyKey?: string;
 
   @Column({ type: 'varchar', length: 30 })
   type!: string;

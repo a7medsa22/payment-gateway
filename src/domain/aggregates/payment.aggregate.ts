@@ -1,6 +1,7 @@
 import {
   DomainException,
   PaymentException,
+  IdempotencyKeyMismatchException,
 } from '@domain/exceptions/domain.exception';
 import { Money } from '@domain/value-objects/money.vo';
 import { Clock, systemClock } from '@domain/clock';
@@ -21,6 +22,7 @@ export interface PaymentProps {
   status: PaymentStatus;
   provider: PaymentProvider;
   providerPaymentId?: string;
+  idempotencyKey?: string;
   paymentMethodType?: string;
   description?: string;
   errorCode?: string;
@@ -64,6 +66,7 @@ export class Payment {
   private _status: PaymentStatus;
   private _provider: PaymentProvider;
   private _providerPaymentId?: string;
+  private readonly _idempotencyKey?: string;
   private _paymentMethodType?: string;
   private _description?: string;
   private _errorCode?: string;
@@ -88,6 +91,7 @@ export class Payment {
     this._status = props.status;
     this._provider = props.provider;
     this._providerPaymentId = props.providerPaymentId;
+    this._idempotencyKey = props.idempotencyKey;
     this._paymentMethodType = props.paymentMethodType;
     this._description = props.description;
     this._errorCode = props.errorCode;
@@ -168,6 +172,10 @@ export class Payment {
 
   get providerPaymentId(): string | undefined {
     return this._providerPaymentId;
+  }
+
+  get idempotencyKey(): string | undefined {
+    return this._idempotencyKey;
   }
 
   get paymentMethodType(): string | undefined {
@@ -383,8 +391,27 @@ export class Payment {
   }
 
   /** Step 1: reserve funds as a PENDING refund transaction. Status unchanged. */
-  requestRefund(refundAmount?: Money, reason?: string): Transaction {
+  requestRefund(
+    refundAmount?: Money,
+    reason?: string,
+    idempotencyKey?: string,
+  ): Transaction {
     const effective = refundAmount ?? this.refundableAmount;
+
+    if (idempotencyKey) {
+      const existing = this._transactions.find(
+        (t) => t.isRefund() && t.idempotencyKey === idempotencyKey,
+      );
+      if (existing) {
+        if (!existing.amount.equals(effective)) {
+          throw new IdempotencyKeyMismatchException(
+            `Refund Idempotency-Key reused with different amount: expected ${existing.amount.amount}, got ${effective.amount}`,
+          );
+        }
+        return existing;
+      }
+    }
+
     this.assertRefundable(effective); // single source of truth (M2)
 
     const isFull = this.totalRefunded
@@ -400,6 +427,7 @@ export class Payment {
         status: TransactionStatus.PENDING,
         amount: effective,
         provider: this._provider,
+        idempotencyKey,
         description: reason ?? (isFull ? 'Full refund' : 'Partial refund'),
       },
       this._clock,
@@ -437,6 +465,52 @@ export class Payment {
     if (tx.isFailed()) return;
     tx.markAsFailed(this._clock);
     this._updatedAt = this._clock.now();
+  }
+
+  /** Provider dashboard / external refund record. Idempotent. */
+  recordExternalRefund(
+    amount: Money,
+    providerRefundId?: string,
+  ): Transaction {
+    if (providerRefundId) {
+      const existing = this._transactions.find(
+        (t) => t.isRefund() && t.providerTransactionId === providerRefundId,
+      );
+      if (existing) return existing;
+    }
+
+    this.assertRefundable(amount);
+
+    const isFull = this.totalRefunded
+      .add(this.pendingRefundTotal)
+      .add(amount)
+      .equals(this.totalCharged);
+
+    const now = this._clock.now();
+    const tx = Transaction.createInternal(
+      {
+        id: crypto.randomUUID(),
+        paymentId: this._id,
+        type: isFull ? TransactionType.REFUND : TransactionType.PARTIAL_REFUND,
+        status: TransactionStatus.SUCCEEDED,
+        amount,
+        provider: this._provider,
+        providerTransactionId: providerRefundId,
+        description: 'External refund from provider',
+        processedAt: now,
+      },
+      this._clock,
+    );
+    this._transactions.push(tx);
+
+    const fullyRefunded = this.totalRefunded.equals(this.totalCharged);
+    this._status = fullyRefunded
+      ? PaymentStatus.REFUNDED
+      : PaymentStatus.PARTIALLY_REFUNDED;
+    if (fullyRefunded) this._refundedAt = now;
+    this._updatedAt = now;
+
+    return tx;
   }
 
   /** @deprecated Use requestRefund + confirmRefund */

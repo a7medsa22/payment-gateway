@@ -4,4 +4,5 @@ export interface PaymentRepository {
   save(payment: Payment): Promise<void>;
   findById(id: string): Promise<Payment | null>;
   findByProviderPaymentId(providerPaymentId: string): Promise<Payment | null>;
+  findByIdempotencyKey(merchantId: string, key: string): Promise<Payment | null>;
 }

@@ -17,6 +17,10 @@ import { TransactionSchema } from './transaction.schema';
   unique: true,
   where: '"provider_payment_id" IS NOT NULL',
 })
+@Index('uq_payments_merchant_idempotency', ['merchantId', 'idempotencyKey'], {
+  unique: true,
+  where: '"idempotency_key" IS NOT NULL',
+})
 export class PaymentSchema {
   @PrimaryColumn('uuid')
   id!: string;
@@ -24,6 +28,14 @@ export class PaymentSchema {
   @Column({ name: 'merchant_id', type: 'varchar', length: 100 })
   @Index('idx_payments_merchant_id')
   merchantId!: string;
+
+  @Column({
+    name: 'idempotency_key',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  idempotencyKey?: string;
 
   @Column({ name: 'user_id', type: 'varchar', length: 255 })
   userId!: string;

@@ -12,6 +12,7 @@ import {
   PaymentException,
   PaymentNotFoundException,
   ConcurrencyException,
+  IdempotencyKeyMismatchException,
 } from '@domain/exceptions/domain.exception';
 import { ForbiddenAccessException } from '@domain/exceptions/forbidden-access.exception';
 import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
@@ -45,6 +46,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof PaymentException) {
       statusCode = HttpStatus.UNPROCESSABLE_ENTITY;
       error = 'PaymentException';
+      message = exception.message;
+    } else if (exception instanceof IdempotencyKeyMismatchException) {
+      statusCode = HttpStatus.UNPROCESSABLE_ENTITY;
+      error = 'IdempotencyKeyMismatchException';
       message = exception.message;
     } else if (exception instanceof DomainException) {
       statusCode = HttpStatus.BAD_REQUEST;
