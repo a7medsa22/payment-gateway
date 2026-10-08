@@ -17,6 +17,7 @@ import {
   ConcurrencyException,
   DomainException,
 } from '@domain/exceptions/domain.exception';
+import { DuplicateIdempotencyKeyException } from '@application/exceptions/duplicate-idempotency-key.exception';
 import { RefundPaymentUseCase } from '@application/use-cases/refund-payment/refund-payment.use-case';
 import { PaymentGateway } from '@application/ports/payment-gateway.port';
 import { PaymentGatewayResolver } from '@application/ports/payment-gateway-resolver.port';
@@ -140,6 +141,7 @@ describe('Concurrency & Financial Correctness (Integration)', () => {
         refundTransactionId: 're_' + req.refundTxId,
         status: 'succeeded',
       })),
+      retrievePayment: jest.fn(),
     };
 
     const mockResolver: PaymentGatewayResolver = {
@@ -297,5 +299,69 @@ describe('Concurrency & Financial Correctness (Integration)', () => {
         m.name.includes('InitialSchema'),
       ),
     ).toBe(true);
+  });
+
+  it('7. Two payments saved with the same (merchantId, idempotencyKey): second save throws DuplicateIdempotencyKeyException', async () => {
+    if (!dbAvailable) return;
+
+    const idempotencyKey = 'idem_key_' + crypto.randomUUID();
+    const merchantId = 'merchant_idem_7';
+
+    const payment1 = Payment.create({
+      id: crypto.randomUUID(),
+      merchantId,
+      userId: 'user_idem_1',
+      amount: Money.from('50.00', 'USD'),
+      provider: PaymentProvider.STRIPE,
+      idempotencyKey,
+    });
+    await paymentRepository.save(payment1);
+
+    const payment2 = Payment.create({
+      id: crypto.randomUUID(),
+      merchantId,
+      userId: 'user_idem_2',
+      amount: Money.from('50.00', 'USD'),
+      provider: PaymentProvider.STRIPE,
+      idempotencyKey,
+    });
+
+    await expect(paymentRepository.save(payment2)).rejects.toThrow(
+      DuplicateIdempotencyKeyException,
+    );
+  });
+
+  it('8. Two transactions saved with the same (paymentId, idempotencyKey): partial unique index prevents duplication', async () => {
+    if (!dbAvailable) return;
+
+    const payment = Payment.create({
+      id: crypto.randomUUID(),
+      merchantId: 'merchant_idem_8',
+      userId: 'user_idem_8',
+      amount: Money.from('100.00', 'USD'),
+      provider: PaymentProvider.STRIPE,
+    });
+    payment.start();
+    payment.succeed('pi_idem_8');
+    await paymentRepository.save(payment);
+
+    const refundKey = 'refund_key_' + crypto.randomUUID();
+
+    // First refund transaction with idempotencyKey
+    payment.requestRefund(Money.from('20.00', 'USD'), 'reason 1', refundKey);
+    await paymentRepository.save(payment);
+
+    // If another transaction entity with identical payment_id and idempotency_key is inserted:
+    const duplicateTx = transactionRepo.create({
+      id: crypto.randomUUID(),
+      paymentId: payment.id,
+      type: 'refund' as any,
+      amount: '20.00',
+      currency: 'USD',
+      status: 'pending' as any,
+      idempotencyKey: refundKey,
+    });
+
+    await expect(transactionRepo.save(duplicateTx)).rejects.toThrow();
   });
 });
