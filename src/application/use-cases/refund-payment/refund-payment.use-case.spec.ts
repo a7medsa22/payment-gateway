@@ -23,6 +23,7 @@ describe('RefundPaymentUseCase', () => {
       save: jest.fn().mockResolvedValue(undefined),
       findById: jest.fn(),
       findByProviderPaymentId: jest.fn().mockResolvedValue(null),
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
     };
     mockGateway = {
       createPayment: jest.fn(),
@@ -30,6 +31,7 @@ describe('RefundPaymentUseCase', () => {
         providerRefundId: 're_mock_123',
         status: 'succeeded',
       }),
+      retrievePayment: jest.fn(),
     };
     mockGatewayResolver = {
       resolve: jest.fn().mockReturnValue(mockGateway),

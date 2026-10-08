@@ -4,9 +4,11 @@ import {
   Get,
   Param,
   Body,
+  Headers,
   HttpCode,
   HttpStatus,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,6 +16,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { CreatePaymentUseCase } from '@application/use-cases/create-payment/create-payment.use-case';
 import { GetPaymentUseCase } from '@application/use-cases/get-payment/get-payment.use-case';
@@ -44,6 +47,11 @@ export class PaymentController {
   @HttpCode(HttpStatus.CREATED)
   @RequireScopes('payments:create')
   @ApiOperation({ summary: 'Create and authorize a new payment' })
+  @ApiHeader({
+    name: 'idempotency-key',
+    description: 'Unique idempotency key (8-255 characters)',
+    required: false,
+  })
   @ApiResponse({
     status: 201,
     description: 'Payment successfully created and initialized with gateway',
@@ -51,11 +59,16 @@ export class PaymentController {
   @ApiResponse({ status: 400, description: 'Invalid input or domain validation failure' })
   @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
   @ApiResponse({ status: 403, description: 'Insufficient scopes' })
+  @ApiResponse({ status: 422, description: 'Idempotency key mismatch with different parameters' })
   @ApiResponse({ status: 502, description: 'Upstream payment gateway failure' })
   async create(
     @MerchantCtx() merchant: MerchantContext,
     @Body() dto: CreatePaymentRequestDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<PaymentResultDto> {
+    if (idempotencyKey && !/^[A-Za-z0-9_\-:.]{8,255}$/.test(idempotencyKey)) {
+      throw new BadRequestException('A valid Idempotency-Key header (8–255 chars) is required');
+    }
     return this.createPaymentUseCase.execute({
       merchantId: merchant.merchantId,
       userId: dto.userId,
@@ -63,6 +76,7 @@ export class PaymentController {
       currency: dto.currency,
       provider: dto.provider,
       description: dto.description,
+      idempotencyKey,
     });
   }
 
@@ -86,6 +100,11 @@ export class PaymentController {
   @RequireScopes('payments:refund')
   @ApiOperation({ summary: 'Initiate a full or partial refund for a payment' })
   @ApiParam({ name: 'id', description: 'Payment UUID' })
+  @ApiHeader({
+    name: 'idempotency-key',
+    description: 'Unique idempotency key (8-255 characters)',
+    required: false,
+  })
   @ApiResponse({ status: 200, description: 'Refund processed successfully' })
   @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
   @ApiResponse({ status: 403, description: 'Insufficient scopes' })
@@ -95,7 +114,11 @@ export class PaymentController {
     @MerchantCtx() merchant: MerchantContext,
     @Param('id') id: string,
     @Body() dto: RefundPaymentRequestDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<RefundResultDto> {
+    if (idempotencyKey && !/^[A-Za-z0-9_\-:.]{8,255}$/.test(idempotencyKey)) {
+      throw new BadRequestException('A valid Idempotency-Key header (8–255 chars) is required');
+    }
     return this.refundPaymentUseCase.execute({
       paymentId: id,
       merchantId: merchant.merchantId,
@@ -103,6 +126,7 @@ export class PaymentController {
       amount: dto.amount,
       currency: dto.currency,
       reason: dto.reason,
+      idempotencyKey,
     });
   }
 }

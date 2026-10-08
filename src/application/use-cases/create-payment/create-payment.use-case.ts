@@ -2,10 +2,15 @@ import { CreatePaymentInput } from './create-payment.input';
 import { PaymentRepository } from '@application/ports/payment.repository';
 import { PaymentGatewayResolver } from '@application/ports/payment-gateway-resolver.port';
 import { Money } from '@domain/value-objects/money.vo';
-import { FailureReason } from '@domain/enums';
+import { FailureReason, PaymentStatus } from '@domain/enums';
 import { Payment } from '@domain/aggregates/payment.aggregate';
 import { PaymentResultDto } from '@application/dtos/payment-result.dto';
 import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
+import {
+  DuplicateIdempotencyKeyException,
+  IdempotencyKeyMismatchException,
+} from '@application/exceptions/duplicate-idempotency-key.exception';
+import { ConcurrencyException } from '@domain/exceptions/domain.exception';
 import {
   validateCurrency,
   validateProvider,
@@ -18,6 +23,16 @@ export class CreatePaymentUseCase {
   ) {}
 
   async execute(input: CreatePaymentInput): Promise<PaymentResultDto> {
+    if (input.idempotencyKey) {
+      const existing = await this.paymentRepository.findByIdempotencyKey(
+        input.merchantId,
+        input.idempotencyKey,
+      );
+      if (existing) {
+        return this.replay(existing, input);
+      }
+    }
+
     // 1. Validate & map primitives -> domain types
     const currency = validateCurrency(input.currency);
     const provider = validateProvider(input.provider);
@@ -32,24 +47,86 @@ export class CreatePaymentUseCase {
       userId: input.userId,
       amount: money,
       provider,
+      idempotencyKey: input.idempotencyKey,
       description: input.description,
     });
 
     // 3. Start payment process (CREATED -> PENDING)
     payment.start();
 
-    // 4. PERSIST FIRST: Save record to DB before invoking external gateway to prevent orphaned charges
-    await this.paymentRepository.save(payment);
+    // 4. PERSIST FIRST: Save record to DB before invoking external gateway
+    try {
+      await this.paymentRepository.save(payment);
+    } catch (e) {
+      if (
+        e instanceof DuplicateIdempotencyKeyException &&
+        input.idempotencyKey
+      ) {
+        const winner = await this.paymentRepository.findByIdempotencyKey(
+          input.merchantId,
+          input.idempotencyKey,
+        );
+        return this.replay(winner!, input);
+      }
+      throw e;
+    }
 
-    // 5. Resolve gateway and perform external side-effect
-    const gateway = this.gatewayResolver.resolve(provider);
+    return this.executeGateway(payment);
+  }
+
+  private async replay(
+    existing: Payment,
+    input: CreatePaymentInput,
+  ): Promise<PaymentResultDto> {
+    // Same key + different request → 422
+    if (
+      existing.userId !== input.userId ||
+      !existing.amount.equals(
+        Money.from(input.amount, validateCurrency(input.currency)),
+      ) ||
+      existing.provider !== validateProvider(input.provider)
+    ) {
+      throw new IdempotencyKeyMismatchException(
+        'Idempotency-Key reused with different parameters',
+      );
+    }
+
+    // Previous attempt crashed or got an ambiguous error → safe to retry:
+    // Stripe key `create:${payment.id}` returns the SAME PaymentIntent
+    if (
+      existing.status === PaymentStatus.PENDING &&
+      !existing.providerPaymentId
+    ) {
+      return this.executeGateway(existing);
+    }
+
+    const gw = this.gatewayResolver.resolve(existing.provider);
+    let details;
+    if (existing.providerPaymentId && typeof gw?.retrievePayment === 'function') {
+      try {
+        details = await gw.retrievePayment(existing.providerPaymentId);
+      } catch {
+        // Safe fallback if provider retrieve fails
+      }
+    }
+
+    return this.toDto(
+      existing,
+      existing.providerPaymentId,
+      details?.clientSecret,
+    );
+  }
+
+  private async executeGateway(payment: Payment): Promise<PaymentResultDto> {
+    const gateway = this.gatewayResolver.resolve(payment.provider);
     let gatewayResult;
     try {
       gatewayResult = await gateway.createPayment({
-        paymentId: id,
-        amount: money.toSmallestUnit(),
-        currency,
-        description: input.description,
+        paymentId: payment.id,
+        idempotencyKey: `create:${payment.id}`,
+        amount: payment.amount.toSmallestUnit(),
+        currency: payment.amount.currency,
+        description: payment.description,
       });
     } catch (error) {
       if (error instanceof PaymentGatewayException && !error.ambiguous) {
@@ -67,21 +144,45 @@ export class CreatePaymentUseCase {
       throw error;
     }
 
-    // 6. Apply domain state transition based on gateway result
-    if (gatewayResult.status === 'succeeded') {
-      payment.succeed(gatewayResult.providerPaymentId);
-      await this.paymentRepository.save(payment);
-    } else if (gatewayResult.status === 'failed') {
-      payment.fail('provider_rejected', FailureReason.PROVIDER_ERROR);
-      await this.paymentRepository.save(payment);
-    } else if (gatewayResult.status === 'pending') {
-      if (gatewayResult.providerPaymentId) {
-        payment.setProviderPaymentId(gatewayResult.providerPaymentId);
+    try {
+      if (gatewayResult.status === 'succeeded') {
+        payment.succeed(gatewayResult.providerPaymentId);
+        await this.paymentRepository.save(payment);
+      } else if (gatewayResult.status === 'failed') {
+        payment.fail('provider_rejected', FailureReason.PROVIDER_ERROR);
+        await this.paymentRepository.save(payment);
+      } else if (gatewayResult.status === 'pending') {
+        if (gatewayResult.providerPaymentId) {
+          payment.setProviderPaymentId(gatewayResult.providerPaymentId);
+        }
+        await this.paymentRepository.save(payment);
       }
-      await this.paymentRepository.save(payment);
+    } catch (saveError) {
+      if (saveError instanceof ConcurrencyException) {
+        const fresh = await this.paymentRepository.findById(payment.id);
+        if (fresh) {
+          return this.toDto(
+            fresh,
+            fresh.providerPaymentId,
+            gatewayResult.clientSecret,
+          );
+        }
+      }
+      throw saveError;
     }
 
-    // 7. Return application DTO
+    return this.toDto(
+      payment,
+      gatewayResult.providerPaymentId,
+      gatewayResult.clientSecret,
+    );
+  }
+
+  private toDto(
+    payment: Payment,
+    providerPaymentId?: string,
+    clientSecret?: string,
+  ): PaymentResultDto {
     return {
       id: payment.id,
       merchantId: payment.merchantId,
@@ -90,8 +191,8 @@ export class CreatePaymentUseCase {
       currency: payment.amount.currency,
       status: payment.status,
       provider: payment.provider,
-      providerPaymentId: gatewayResult.providerPaymentId,
-      clientSecret: gatewayResult.clientSecret,
+      providerPaymentId: providerPaymentId ?? payment.providerPaymentId,
+      clientSecret,
       createdAt: payment.createdAt,
     };
   }

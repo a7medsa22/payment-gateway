@@ -9,6 +9,7 @@ import { PaymentProvider, PaymentStatus } from '@domain/enums';
 import { DomainException } from '@domain/exceptions/domain.exception';
 import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
 import { Payment } from '@domain/aggregates/payment.aggregate';
+import { Money } from '@domain/value-objects/money.vo';
 
 describe('CreatePaymentUseCase', () => {
   let useCase: CreatePaymentUseCase;
@@ -21,11 +22,13 @@ describe('CreatePaymentUseCase', () => {
       save: jest.fn().mockResolvedValue(undefined),
       findById: jest.fn().mockResolvedValue(null),
       findByProviderPaymentId: jest.fn().mockResolvedValue(null),
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
     };
 
     mockPaymentGateway = {
       createPayment: jest.fn(),
       refundPayment: jest.fn(),
+      retrievePayment: jest.fn(),
     };
 
     mockGatewayResolver = {
@@ -60,6 +63,7 @@ describe('CreatePaymentUseCase', () => {
     );
     expect(mockPaymentGateway.createPayment).toHaveBeenCalledWith({
       paymentId: result.id,
+      idempotencyKey: `create:${result.id}`,
       amount: 10000,
       currency: 'USD',
       description: 'Test payment',
@@ -279,5 +283,108 @@ describe('CreatePaymentUseCase', () => {
     ).rejects.toThrow('Database error');
 
     expect(mockPaymentGateway.createPayment).not.toHaveBeenCalled();
+  });
+
+  describe('Idempotency & Replay', () => {
+    it('should replay existing payment when same idempotency key is presented with matching parameters', async () => {
+      const existing = Payment.create({
+        id: 'pay_existing_1',
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: Money.from('100.00', 'USD'),
+        provider: PaymentProvider.STRIPE,
+        idempotencyKey: 'idemp_key_100',
+      });
+      existing.start();
+      existing.succeed('pi_stripe_existing');
+
+      mockPaymentRepository.findByIdempotencyKey.mockResolvedValueOnce(existing);
+      mockPaymentGateway.retrievePayment.mockResolvedValueOnce({
+        status: 'succeeded',
+        amount: 10000,
+        currency: 'USD',
+        clientSecret: 'secret_existing',
+      });
+
+      const result = await useCase.execute({
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: '100.00',
+        currency: 'USD',
+        provider: 'stripe',
+        idempotencyKey: 'idemp_key_100',
+      });
+
+      expect(result.id).toBe('pay_existing_1');
+      expect(result.providerPaymentId).toBe('pi_stripe_existing');
+      expect(result.clientSecret).toBe('secret_existing');
+      expect(mockPaymentGateway.createPayment).not.toHaveBeenCalled();
+    });
+
+    it('should throw IdempotencyKeyMismatchException when same key is reused with different amount', async () => {
+      const existing = Payment.create({
+        id: 'pay_existing_1',
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: Money.from('100.00', 'USD'),
+        provider: PaymentProvider.STRIPE,
+        idempotencyKey: 'idemp_key_100',
+      });
+
+      mockPaymentRepository.findByIdempotencyKey.mockResolvedValueOnce(existing);
+
+      await expect(
+        useCase.execute({
+          merchantId: 'merchant_123',
+          userId: 'user_123',
+          amount: '200.00', // different amount
+          currency: 'USD',
+          provider: 'stripe',
+          idempotencyKey: 'idemp_key_100',
+        }),
+      ).rejects.toThrow('Idempotency-Key reused with different parameters');
+
+      expect(mockPaymentGateway.createPayment).not.toHaveBeenCalled();
+    });
+
+    it('should handle DuplicateIdempotencyKeyException during concurrent insert and replay winner', async () => {
+      const winner = Payment.create({
+        id: 'pay_winner_1',
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: Money.from('100.00', 'USD'),
+        provider: PaymentProvider.STRIPE,
+        idempotencyKey: 'idemp_key_race',
+      });
+      winner.start();
+      winner.succeed('pi_winner');
+
+      const { DuplicateIdempotencyKeyException } = await import(
+        '@application/exceptions/duplicate-idempotency-key.exception'
+      );
+
+      // First check: null (not found yet)
+      mockPaymentRepository.findByIdempotencyKey
+        .mockResolvedValueOnce(null)
+        // Second check after 23505 catch: returns winner
+        .mockResolvedValueOnce(winner);
+
+      mockPaymentRepository.save.mockRejectedValueOnce(
+        new DuplicateIdempotencyKeyException(),
+      );
+
+      const result = await useCase.execute({
+        merchantId: 'merchant_123',
+        userId: 'user_123',
+        amount: '100.00',
+        currency: 'USD',
+        provider: 'stripe',
+        idempotencyKey: 'idemp_key_race',
+      });
+
+      expect(result.id).toBe('pay_winner_1');
+      expect(result.providerPaymentId).toBe('pi_winner');
+      expect(mockPaymentGateway.createPayment).not.toHaveBeenCalled();
+    });
   });
 });

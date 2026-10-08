@@ -16,6 +16,7 @@ describe('GetPaymentUseCase', () => {
       save: jest.fn(),
       findById: jest.fn(),
       findByProviderPaymentId: jest.fn(),
+      findByIdempotencyKey: jest.fn(),
     };
     useCase = new GetPaymentUseCase(paymentRepository);
   });

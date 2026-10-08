@@ -11,6 +11,7 @@ describe('PaymentGatewayResolverImpl', () => {
     mockStripeGateway = {
       createPayment: jest.fn(),
       refundPayment: jest.fn(),
+      retrievePayment: jest.fn(),
     };
     resolver = new PaymentGatewayResolverImpl(mockStripeGateway);
   });

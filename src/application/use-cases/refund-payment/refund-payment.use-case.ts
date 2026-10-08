@@ -26,10 +26,20 @@ export class RefundPaymentUseCase {
       const amount = input.amount
         ? Money.from(input.amount, validateCurrency(input.currency ?? p.amount.currency))
         : undefined;
-      const tx = p.requestRefund(amount, input.reason);
+      const tx = p.requestRefund(amount, input.reason, input.idempotencyKey);
       await this.paymentRepository.save(p); // concurrent reservers → retry → re-validated
       return { payment: p, refundTx: tx };
     });
+
+    if (refundTx.isSuccessful()) {
+      return this.toDto(payment, refundTx.id, input.reason, 'succeeded');
+    }
+    if (refundTx.isFailed()) {
+      throw new PaymentException('Payment provider rejected refund');
+    }
+    if (refundTx.isPending() && refundTx.providerTransactionId) {
+      return this.toDto(payment, refundTx.id, input.reason, 'pending');
+    }
 
     // ── 2. EXECUTE at provider (idempotent via refundTx.id) ────────────────
     const gateway = this.gatewayResolver.resolve(payment.provider);

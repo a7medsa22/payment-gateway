@@ -4,5 +4,6 @@ export interface CreatePaymentInput {
   amount: string;
   currency: string;
   provider: string;
+  idempotencyKey?: string;
   description?: string;
 }

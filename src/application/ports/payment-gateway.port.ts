@@ -2,6 +2,7 @@ import { Currency } from '@domain/enums';
 
 export interface CreatePaymentGatewayRequest {
   paymentId: string;
+  idempotencyKey: string;
   amount: number;
   currency: Currency;
   description?: string;
@@ -27,6 +28,13 @@ export interface RefundPaymentGatewayResult {
   status: 'pending' | 'succeeded' | 'failed';
 }
 
+export interface RetrievedPaymentDetails {
+  status: 'pending' | 'succeeded' | 'failed' | 'canceled';
+  amount: number;
+  currency: string;
+  clientSecret?: string;
+}
+
 export interface PaymentGateway {
   createPayment(
     request: CreatePaymentGatewayRequest,
@@ -34,4 +42,7 @@ export interface PaymentGateway {
   refundPayment(
     request: RefundPaymentGatewayRequest,
   ): Promise<RefundPaymentGatewayResult>;
+  retrievePayment(
+    providerPaymentId: string,
+  ): Promise<RetrievedPaymentDetails>;
 }
