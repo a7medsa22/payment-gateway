@@ -13,11 +13,10 @@ import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import Stripe from 'stripe';
 import { PaymentRepository } from '@application/ports/payment.repository';
-import {
-  WebhookEventRepository,
-  WebhookEventStatus,
-} from '@application/ports/webhook-event.repository';
-import { PaymentStatus, FailureReason } from '@domain/enums';
+import { WebhookEventRepository } from '@application/ports/webhook-event.repository';
+import { HandlePaymentWebhookUseCase } from '@application/use-cases/handle-payment-webhook/handle-payment-webhook.use-case';
+import { StripeWebhookEventMapper } from '@infrastructure/gateways/stripe-webhook-event.mapper';
+import { STRIPE_CLIENT } from '@infrastructure/gateways/stripe-client.provider';
 import { RawBody } from '../decorators/raw-body.decorator';
 
 @ApiTags('Webhooks')
@@ -26,19 +25,45 @@ export class StripeWebhookController {
   private readonly logger = new Logger(StripeWebhookController.name);
   private readonly stripe: Stripe;
   private readonly webhookSecret: string;
+  private readonly webhookEventRepository: WebhookEventRepository;
+  private readonly handlePaymentWebhookUseCase: HandlePaymentWebhookUseCase;
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject('PaymentRepository')
-    private readonly paymentRepository: PaymentRepository,
     @Inject('WebhookEventRepository')
-    private readonly webhookEventRepository: WebhookEventRepository,
+    webhookEventRepositoryOrPaymentRepo:
+      | WebhookEventRepository
+      | PaymentRepository,
     @Optional()
-    @Inject('STRIPE_CLIENT')
+    @Inject(HandlePaymentWebhookUseCase)
+    handlePaymentWebhookUseCaseOrWebhookRepo?:
+      | HandlePaymentWebhookUseCase
+      | WebhookEventRepository,
+    @Optional()
+    @Inject(STRIPE_CLIENT)
     stripeClient?: Stripe,
   ) {
+    if (
+      handlePaymentWebhookUseCaseOrWebhookRepo &&
+      'claim' in handlePaymentWebhookUseCaseOrWebhookRepo
+    ) {
+      // Legacy signature: (configService, paymentRepository, webhookEventRepository, stripeClient)
+      this.webhookEventRepository = handlePaymentWebhookUseCaseOrWebhookRepo;
+      this.handlePaymentWebhookUseCase = new HandlePaymentWebhookUseCase(
+        webhookEventRepositoryOrPaymentRepo as PaymentRepository,
+        this.webhookEventRepository,
+      );
+    } else {
+      // Clean Architecture signature: (configService, webhookEventRepository, handlePaymentWebhookUseCase, stripeClient)
+      this.webhookEventRepository =
+        webhookEventRepositoryOrPaymentRepo as WebhookEventRepository;
+      this.handlePaymentWebhookUseCase =
+        handlePaymentWebhookUseCaseOrWebhookRepo as HandlePaymentWebhookUseCase;
+    }
+
     const secretKey =
       this.configService.get<string>('providers.stripe.secretKey') ||
+      process.env.STRIPE_SECRET_KEY ||
       'sk_test_placeholder';
     const apiVersion = this.configService.get<string>(
       'providers.stripe.apiVersion',
@@ -48,6 +73,9 @@ export class StripeWebhookController {
       stripeClient ??
       new Stripe(secretKey, {
         apiVersion: (apiVersion as Stripe.LatestApiVersion) || '2023-10-16',
+        timeout: 20_000,
+        maxNetworkRetries: 2,
+        telemetry: false,
       });
 
     this.webhookSecret =
@@ -107,7 +135,11 @@ export class StripeWebhookController {
     }
 
     try {
-      const status = await this.dispatch(event);
+      const providerEvent = StripeWebhookEventMapper.toDomain(event);
+      const status = await this.handlePaymentWebhookUseCase.execute(
+        'STRIPE',
+        providerEvent,
+      );
       return { received: true, status };
     } catch (error) {
       await this.webhookEventRepository
@@ -115,149 +147,5 @@ export class StripeWebhookController {
         .catch(() => undefined);
       throw error;
     }
-  }
-
-  private async dispatch(event: Stripe.Event): Promise<string> {
-    switch (event.type) {
-      case 'payment_intent.succeeded': {
-        const intent = event.data.object as Stripe.PaymentIntent;
-        return this.handlePaymentIntentSucceeded(event.id, intent);
-      }
-      case 'payment_intent.payment_failed': {
-        const intent = event.data.object as Stripe.PaymentIntent;
-        return this.handlePaymentIntentFailed(event.id, intent);
-      }
-      default: {
-        this.logger.log(`Unhandled Stripe event type: ${event.type}`);
-        await this.webhookEventRepository.markProcessed('STRIPE', event.id);
-        return 'ignored';
-      }
-    }
-  }
-
-  private async handlePaymentIntentSucceeded(
-    eventId: string,
-    intent: Stripe.PaymentIntent,
-  ): Promise<string> {
-    const payment = await this.findPaymentForIntent(intent);
-
-    if (!payment) {
-      this.logger.warn(`No payment found for Stripe intent ${intent.id}`);
-      await this.webhookEventRepository.markProcessed('STRIPE', eventId);
-      return 'payment_not_found';
-    }
-
-    const amountOk =
-      intent.amount_received === payment.amount.toSmallestUnit() &&
-      intent.currency === payment.amount.currency.toLowerCase();
-    const intentOk =
-      !payment.providerPaymentId || payment.providerPaymentId === intent.id;
-
-    if (!amountOk || !intentOk) {
-      this.logger.error(
-        `[ALERT] PAYMENT_MISMATCH payment=${payment.id} intent=${intent.id} ` +
-          `expected=${payment.amount.toSmallestUnit()} ${payment.amount.currency} ` +
-          `got=${intent.amount_received} ${intent.currency}`,
-      );
-      await this.webhookEventRepository.markRequiresReview(
-        'STRIPE',
-        eventId,
-        'amount_or_intent_mismatch',
-      );
-      return 'requires_review';
-    }
-
-    if (
-      [
-        PaymentStatus.FAILED,
-        PaymentStatus.EXPIRED,
-        PaymentStatus.CANCELLED,
-      ].includes(payment.status)
-    ) {
-      this.logger.error(
-        `[ALERT] CHARGE_ON_TERMINAL_PAYMENT payment=${payment.id} status=${payment.status} intent=${intent.id}`,
-      );
-      await this.webhookEventRepository.markRequiresReview(
-        'STRIPE',
-        eventId,
-        `succeeded_on_${payment.status}`,
-      );
-      return 'requires_review';
-    }
-
-    // Idempotency: Return immediately if payment is already in terminal SUCCEEDED state
-    if (payment.status === PaymentStatus.SUCCEEDED) {
-      this.logger.log(
-        `Payment ${payment.id} is already in SUCCEEDED state. No-op.`,
-      );
-      await this.webhookEventRepository.markProcessed('STRIPE', eventId);
-      return 'already_succeeded';
-    }
-
-    if (payment.status === PaymentStatus.CREATED) {
-      payment.start();
-    }
-
-    if (
-      payment.status === PaymentStatus.PENDING ||
-      payment.status === PaymentStatus.PROCESSING
-    ) {
-      payment.succeed(intent.id);
-      await this.paymentRepository.save(payment);
-    }
-
-    await this.webhookEventRepository.markProcessed('STRIPE', eventId);
-    return 'succeeded';
-  }
-
-  private async handlePaymentIntentFailed(
-    eventId: string,
-    intent: Stripe.PaymentIntent,
-  ): Promise<string> {
-    const payment = await this.findPaymentForIntent(intent);
-
-    if (!payment) {
-      this.logger.warn(`No payment found for Stripe intent ${intent.id}`);
-      await this.webhookEventRepository.markProcessed('STRIPE', eventId);
-      return 'payment_not_found';
-    }
-
-    // Idempotency: Return immediately if payment is already in a terminal failure state
-    if (
-      payment.status === PaymentStatus.FAILED ||
-      payment.status === PaymentStatus.CANCELLED ||
-      payment.status === PaymentStatus.EXPIRED
-    ) {
-      this.logger.log(
-        `Payment ${payment.id} is already in terminal failed state (${payment.status}). No-op.`,
-      );
-      await this.webhookEventRepository.markProcessed('STRIPE', eventId);
-      return 'already_failed';
-    }
-
-    if (payment.status === PaymentStatus.CREATED) {
-      payment.start();
-    }
-
-    if (
-      payment.status === PaymentStatus.PENDING ||
-      payment.status === PaymentStatus.PROCESSING
-    ) {
-      const errorCode = intent.last_payment_error?.code ?? 'payment_failed';
-      payment.fail(errorCode, FailureReason.PROVIDER_ERROR);
-      await this.paymentRepository.save(payment);
-    }
-
-    await this.webhookEventRepository.markProcessed('STRIPE', eventId);
-    return 'failed';
-  }
-
-  private async findPaymentForIntent(intent: Stripe.PaymentIntent) {
-    const paymentId = intent.metadata?.paymentId;
-    if (paymentId) {
-      const payment = await this.paymentRepository.findById(paymentId);
-      if (payment) return payment;
-    }
-    return this.paymentRepository.findByProviderPaymentId(intent.id);
   }
 }

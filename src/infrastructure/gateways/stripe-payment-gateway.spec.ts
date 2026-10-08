@@ -6,6 +6,7 @@ import { CreatePaymentGatewayRequest } from '@application/ports/payment-gateway.
 const actualStripe = jest.requireActual<typeof import('stripe')>('stripe');
 
 const mockCreate = jest.fn();
+const mockRetrieve = jest.fn();
 const mockRefundsCreate = jest.fn();
 
 jest.mock('stripe', () => {
@@ -13,6 +14,7 @@ jest.mock('stripe', () => {
   const MockStripe = jest.fn().mockImplementation(() => ({
     paymentIntents: {
       create: mockCreate,
+      retrieve: mockRetrieve,
     },
     refunds: {
       create: mockRefundsCreate,
@@ -31,6 +33,7 @@ describe('StripePaymentGateway', () => {
 
   const sampleRequest: CreatePaymentGatewayRequest = {
     paymentId: 'pay_test_123',
+    idempotencyKey: 'idemp_key_123',
     amount: 5000,
     currency: 'USD',
     description: 'Test Order #123',
@@ -39,6 +42,7 @@ describe('StripePaymentGateway', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCreate.mockReset();
+    mockRetrieve.mockReset();
     mockRefundsCreate.mockReset();
     gateway = new StripePaymentGateway('sk_test_mock_key');
   });
@@ -46,16 +50,22 @@ describe('StripePaymentGateway', () => {
   describe('constructor', () => {
     it('should initialize Stripe with default apiVersion when not provided', () => {
       new StripePaymentGateway('sk_test_123');
-      expect(Stripe).toHaveBeenCalledWith('sk_test_123', {
-        apiVersion: '2023-10-16',
-      });
+      expect(Stripe).toHaveBeenCalledWith(
+        'sk_test_123',
+        expect.objectContaining({
+          apiVersion: '2023-10-16',
+        }),
+      );
     });
 
     it('should initialize Stripe with custom apiVersion when provided', () => {
       new StripePaymentGateway('sk_test_123', '2022-11-15');
-      expect(Stripe).toHaveBeenCalledWith('sk_test_123', {
-        apiVersion: '2022-11-15',
-      });
+      expect(Stripe).toHaveBeenCalledWith(
+        'sk_test_123',
+        expect.objectContaining({
+          apiVersion: '2022-11-15',
+        }),
+      );
     });
   });
 
@@ -69,14 +79,17 @@ describe('StripePaymentGateway', () => {
 
       const result = await gateway.createPayment(sampleRequest);
 
-      expect(mockCreate).toHaveBeenCalledWith({
-        amount: 5000,
-        currency: 'usd',
-        description: 'Test Order #123',
-        metadata: {
-          paymentId: 'pay_test_123',
+      expect(mockCreate).toHaveBeenCalledWith(
+        {
+          amount: 5000,
+          currency: 'usd',
+          description: 'Test Order #123',
+          metadata: {
+            paymentId: 'pay_test_123',
+          },
         },
-      });
+        { idempotencyKey: 'idemp_key_123' },
+      );
 
       expect(result).toEqual({
         providerPaymentId: 'pi_test_abc',
@@ -347,6 +360,61 @@ describe('StripePaymentGateway', () => {
           currency: 'USD',
         }),
       ).rejects.toThrow(PaymentGatewayException);
+    });
+  });
+
+  describe('retrievePayment', () => {
+    it('should retrieve payment intent and map succeeded status and clientSecret', async () => {
+      mockRetrieve.mockResolvedValue({
+        id: 'pi_123',
+        status: 'succeeded',
+        amount: 5000,
+        currency: 'usd',
+        client_secret: 'pi_123_secret',
+      });
+
+      const result = await gateway.retrievePayment('pi_123');
+
+      expect(mockRetrieve).toHaveBeenCalledWith('pi_123');
+      expect(result).toEqual({
+        status: 'succeeded',
+        amount: 5000,
+        currency: 'USD',
+        clientSecret: 'pi_123_secret',
+      });
+    });
+
+    it('should map canceled status', async () => {
+      mockRetrieve.mockResolvedValue({
+        id: 'pi_123',
+        status: 'canceled',
+        amount: 5000,
+        currency: 'usd',
+      });
+
+      const result = await gateway.retrievePayment('pi_123');
+      expect(result.status).toBe('canceled');
+    });
+
+    it('should map failed when requires_payment_method with last_payment_error', async () => {
+      mockRetrieve.mockResolvedValue({
+        id: 'pi_123',
+        status: 'requires_payment_method',
+        last_payment_error: { code: 'card_declined' },
+        amount: 5000,
+        currency: 'usd',
+      });
+
+      const result = await gateway.retrievePayment('pi_123');
+      expect(result.status).toBe('failed');
+    });
+
+    it('should translate stripe errors to PaymentGatewayException', async () => {
+      mockRetrieve.mockRejectedValue(new Error('Stripe retrieve failed'));
+
+      await expect(gateway.retrievePayment('pi_123')).rejects.toThrow(
+        PaymentGatewayException,
+      );
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import Stripe from 'stripe';
 import {
   PaymentGateway,
@@ -6,31 +6,55 @@ import {
   CreatePaymentGatewayResult,
   RefundPaymentGatewayRequest,
   RefundPaymentGatewayResult,
+  RetrievedPaymentDetails,
 } from '@application/ports/payment-gateway.port';
 import { PaymentGatewayException } from '@application/exceptions/payment-gateway.exception';
+import { STRIPE_CLIENT } from './stripe-client.provider';
 
 @Injectable()
 export class StripePaymentGateway implements PaymentGateway {
   private readonly stripe: Stripe;
 
-  constructor(secretKey: string, apiVersion?: string) {
-    this.stripe = new Stripe(secretKey, {
-      apiVersion: (apiVersion as Stripe.LatestApiVersion) || '2023-10-16',
-    });
+  constructor(
+    @Optional()
+    @Inject(STRIPE_CLIENT)
+    stripeOrKey?: Stripe | string,
+    apiVersion?: string,
+  ) {
+    if (typeof stripeOrKey === 'string') {
+      this.stripe = new Stripe(stripeOrKey, {
+        apiVersion: (apiVersion as Stripe.LatestApiVersion) || '2023-10-16',
+        timeout: 20_000,
+        maxNetworkRetries: 2,
+        telemetry: false,
+      });
+    } else if (stripeOrKey) {
+      this.stripe = stripeOrKey;
+    } else {
+      this.stripe = new Stripe('sk_test_placeholder', {
+        apiVersion: (apiVersion as Stripe.LatestApiVersion) || '2023-10-16',
+        timeout: 20_000,
+        maxNetworkRetries: 2,
+        telemetry: false,
+      });
+    }
   }
 
   async createPayment(
     request: CreatePaymentGatewayRequest,
   ): Promise<CreatePaymentGatewayResult> {
     try {
-      const paymentIntent = await this.stripe.paymentIntents.create({
-        amount: request.amount,
-        currency: request.currency.toLowerCase(),
-        description: request.description,
-        metadata: {
-          paymentId: request.paymentId,
+      const paymentIntent = await this.stripe.paymentIntents.create(
+        {
+          amount: request.amount,
+          currency: request.currency.toLowerCase(),
+          description: request.description,
+          metadata: {
+            paymentId: request.paymentId,
+          },
         },
-      });
+        { idempotencyKey: request.idempotencyKey },
+      );
 
       return {
         providerPaymentId: paymentIntent.id,
@@ -67,6 +91,38 @@ export class StripePaymentGateway implements PaymentGateway {
             : refund.status === 'failed'
               ? 'failed'
               : 'pending',
+      };
+    } catch (error) {
+      throw this.handleStripeError(error);
+    }
+  }
+
+  async retrievePayment(
+    providerPaymentId: string,
+  ): Promise<RetrievedPaymentDetails> {
+    try {
+      const intent =
+        await this.stripe.paymentIntents.retrieve(providerPaymentId);
+
+      let status: 'pending' | 'succeeded' | 'failed' | 'canceled';
+      if (intent.status === 'succeeded') {
+        status = 'succeeded';
+      } else if (intent.status === 'canceled') {
+        status = 'canceled';
+      } else if (
+        intent.status === 'requires_payment_method' &&
+        intent.last_payment_error
+      ) {
+        status = 'failed';
+      } else {
+        status = 'pending';
+      }
+
+      return {
+        status,
+        amount: intent.amount,
+        currency: intent.currency.toUpperCase(),
+        clientSecret: intent.client_secret ?? undefined,
       };
     } catch (error) {
       throw this.handleStripeError(error);
