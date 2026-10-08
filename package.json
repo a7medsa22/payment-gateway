@@ -41,6 +41,7 @@
     "class-validator": "^0.14.1",
     "decimal.js": "^10.6.0",
     "dotenv": "^16.3.1",
+    "ioredis": "^6.0.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.11.3",
